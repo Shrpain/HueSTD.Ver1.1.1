@@ -1,20 +1,57 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# HueSTD - Hue Student Community Hub
 
-# Run and deploy your AI Studio app
+A comprehensive platform for Hue University students featuring:
 
-This contains everything you need to run your app locally.
+- **Document Sharing** - Upload, search, and download study materials
+- **AI Chat Assistant** - OCR-powered PDF analysis and intelligent Q&A
+- **Community Marketplace** - Buy and sell used items
+- **Real-time Messaging** - Direct messaging between students
+- **Admin Dashboard** - Content moderation and user management
 
-View your app in AI Studio: https://ai.studio/apps/drive/1Rx90JTafvZo_g9JmdnSJ6NkDnxJGwrbv
+## Tech Stack
 
-## Run Locally
+- **Frontend**: React 19 + TypeScript + Vite
+- **Backend**: .NET 9 Web API (Clean Architecture)
+- **Database**: Supabase (PostgreSQL + Storage + Realtime)
+- **Deployment**: Vercel (frontend), dedicated server (backend)
 
-**Prerequisites:**  Node.js
+## Getting Started
 
+### Prerequisites
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- Node.js 18+
+- .NET 9 SDK
+- Supabase account
+
+### Frontend
+
+```bash
+cd HueSTD_Frontend
+npm install
+npm run dev
+```
+
+### Backend
+
+```bash
+cd HueSTD_Backend/HueSTD.API
+dotnet run
+```
+
+## Environment Variables
+
+### Frontend (.env.local)
+
+```
+VITE_SUPABASE_URL=your_supabase_url
+VITE_SUPABASE_ANON_KEY=your_supabase_anon_key
+VITE_API_BASE_URL=/api
+```
+
+### Backend (appsettings.json)
+
+```
+Supabase:Url=your_supabase_url
+Supabase:Key=your_service_role_key
+Supabase:AnonKey=your_anon_key
+```

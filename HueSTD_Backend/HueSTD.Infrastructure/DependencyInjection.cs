@@ -43,7 +43,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<INotificationService, NotificationService>();
-        services.AddScoped<IAiService, AiService>();
+        services.AddHttpClient<IAiService, AiService>();
         
         // Add Realtime Monitor Background Service
         services.AddHostedService<RealtimeMonitorService>();

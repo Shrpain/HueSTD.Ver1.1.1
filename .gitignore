@@ -52,3 +52,16 @@ Desktop.ini
 # Misc
 # =========================
 *.log
+
+# =========================
+# Scripts with Secrets (NEVER commit)
+# =========================
+migrate-ai-tables.js
+test-supabase-connection.js
+HueSTD_Frontend/create_admin.js
+
+# =========================
+# Frontend Build Output
+# =========================
+HueSTD_Frontend/dist/
+HueSTD_Frontend/dist-ssr/
