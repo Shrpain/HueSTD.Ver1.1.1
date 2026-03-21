@@ -1,0 +1,8 @@
+{
+  "name": "HueSTD - Student Community Hub",
+  "description": "A comprehensive platform for students in Hue, Vietnam, featuring study materials sharing, community forums, marketplace for used items, and real-time messaging.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

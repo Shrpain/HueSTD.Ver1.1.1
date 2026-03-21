@@ -1,0 +1,11 @@
+# HueSTD Backend Configuration
+# Copy this file to appsettings.json and fill in your actual values
+
+# Supabase Configuration
+Supabase__Url=https://oubkbvypiabgfulnhsnd.supabase.co
+Supabase__Key=your_supabase_service_role_key_here
+
+# AI Service Configuration (Optional - can be managed via Admin Panel)
+AI__ApiUrl=http://127.0.0.1:8045/v1/chat/completions
+AI__Model=gemini-3-flash
+AI__DefaultApiKey=your_ai_api_key_here
