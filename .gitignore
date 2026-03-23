@@ -16,6 +16,7 @@ yarn-error.log*
 # =========================
 bin/
 obj/
+HueSTD_Backend/HueSTD.API/appsettings.Development.json
 *.user
 *.suo
 *.userosscache
