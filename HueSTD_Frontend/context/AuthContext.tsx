@@ -1,12 +1,10 @@
-
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useState } from 'react';
 import api from '../services/api';
-import { supabase } from '../services/supabase';
+import { supabase, syncSupabaseRealtimeAuth } from '../services/supabase';
 import { useToast } from '../components/Toast';
 
 export interface User {
     id: string;
-    // ... rest of User interface constant ...
     email: string;
     fullName?: string;
     school?: string;
@@ -44,6 +42,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { showToast } = useToast();
     const [user, setUser] = useState<User | null>(null);
 
+    const persistUser = useCallback((nextUser: User, token: string, refreshToken: string) => {
+        localStorage.setItem('accessToken', token);
+        localStorage.setItem('refreshToken', refreshToken);
+        localStorage.setItem('user', JSON.stringify(nextUser));
+        setUser(nextUser);
+        void syncSupabaseRealtimeAuth(token);
+    }, []);
+
+    const clearAuthStorage = useCallback(() => {
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
+        localStorage.removeItem('user');
+    }, []);
+
+    const hydrateUserFromSession = useCallback(async (token: string, refreshToken: string) => {
+        const response = await api.get('/Auth/me', {
+            headers: { Authorization: `Bearer ${token}` },
+        });
+        persistUser(response.data, token, refreshToken);
+        return response.data as User;
+    }, [persistUser]);
+
     const refreshUser = useCallback(async () => {
         try {
             const response = await api.get('/Profile/me');
@@ -56,80 +76,101 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
     }, []);
 
+    const logout = useCallback(() => {
+        const oldUser = user;
+        clearAuthStorage();
+        setUser(null);
+        void syncSupabaseRealtimeAuth(null);
+        supabase.auth.signOut().catch(() => {});
+        showToast({
+            type: 'info',
+            title: 'Hen gap lai',
+            message: `Tam biet ${oldUser?.fullName || 'ban'}!`,
+            duration: 3000,
+        });
+    }, [clearAuthStorage, showToast, user]);
+
     useEffect(() => {
-        // Check for existing token on load
         const token = localStorage.getItem('accessToken');
         const savedUser = localStorage.getItem('user');
+
         if (token && savedUser) {
             try {
                 setUser(JSON.parse(savedUser));
-                // Refresh user data from API to get latest stats (totalDocuments, totalDownloads)
-                refreshUser();
-            } catch (e) {
-                console.error("Failed to parse user", e);
-                logout();
+                const refreshToken = localStorage.getItem('refreshToken') ?? '';
+                void supabase.auth.setSession({
+                    access_token: token,
+                    refresh_token: refreshToken,
+                }).catch(() => {});
+                void syncSupabaseRealtimeAuth(token);
+                void refreshUser();
+            } catch (error) {
+                console.error('Failed to parse saved user:', error);
+                clearAuthStorage();
             }
             return;
         }
-        // After OAuth redirect: Supabase has session but we don't have token in localStorage yet
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            console.log('[AuthContext] getSession result:', session ? 'has session, user: ' + session.user?.email : 'no session');
-            if (session && !localStorage.getItem('accessToken')) {
-                localStorage.setItem('accessToken', session.access_token);
-                localStorage.setItem('refreshToken', session.refresh_token ?? '');
-                console.log('[AuthContext] Calling /Auth/me with token:', session.access_token.substring(0, 20) + '...');
-                api.get('/Auth/me', { headers: { Authorization: `Bearer ${session.access_token}` } })
-                    .then((res) => {
-                        console.log('[AuthContext] /Auth/me SUCCESS:', res.data);
-                        const u = res.data;
-                        setUser(u);
-                        localStorage.setItem('user', JSON.stringify(u));
-                        window.dispatchEvent(new CustomEvent('auth-toast', {
-                            detail: { type: 'success', title: 'Đăng nhập thành công', message: 'Chào mừng bạn trở lại!' }
-                        }));
-                    })
-                    .catch((err) => {
-                        console.error('[AuthContext] /Auth/me FAILED:', err.response?.data || err.message);
-                        supabase.auth.signOut();
-                        localStorage.removeItem('accessToken');
-                        localStorage.removeItem('refreshToken');
-                        localStorage.removeItem('user');
-                        const msg = err.response?.data?.message || err.message || 'Không thể lấy thông tin tài khoản. Vui lòng thử lại.';
-                        window.dispatchEvent(new CustomEvent('auth-toast', {
-                            detail: { type: 'error', title: 'Đăng nhập thất bại', message: msg }
-                        }));
-                    });
-            } else {
-                console.log('[AuthContext] No session or token already exists');
-            }
-        });
-    }, []);
 
-    // Realtime subscription for profile changes (points, etc.)
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            console.log('[AuthContext] getSession result:', session ? `has session, user: ${session.user?.email}` : 'no session');
+
+            if (!session) {
+                console.log('[AuthContext] No session found');
+                return;
+            }
+
+            console.log('[AuthContext] Calling /Auth/me with token:', `${session.access_token.substring(0, 20)}...`);
+
+            hydrateUserFromSession(session.access_token, session.refresh_token ?? '')
+                .then((nextUser) => {
+                    console.log('[AuthContext] /Auth/me SUCCESS:', nextUser);
+                    window.dispatchEvent(new CustomEvent('auth-toast', {
+                        detail: {
+                            type: 'success',
+                            title: 'Dang nhap thanh cong',
+                            message: 'Chao mung ban tro lai!',
+                        },
+                    }));
+                })
+                .catch((err) => {
+                    console.error('[AuthContext] /Auth/me FAILED:', err.response?.data || err.message);
+                    clearAuthStorage();
+                    supabase.auth.signOut().catch(() => {});
+                    const msg = err.response?.data?.message || err.message || 'Khong the lay thong tin tai khoan. Vui long thu lai.';
+                    window.dispatchEvent(new CustomEvent('auth-toast', {
+                        detail: {
+                            type: 'error',
+                            title: 'Dang nhap that bai',
+                            message: msg,
+                        },
+                    }));
+                });
+        });
+    }, [clearAuthStorage, hydrateUserFromSession, refreshUser]);
+
     useEffect(() => {
-        if (!user || !user.id) return;
+        if (!user?.id) return;
 
         const channel = supabase
             .channel(`profile_realtime_${user.id}`)
-            .on('postgres_changes',
+            .on(
+                'postgres_changes',
                 {
                     event: 'UPDATE',
                     schema: 'public',
                     table: 'profiles',
-                    filter: `id=eq.${user.id}`
+                    filter: `id=eq.${user.id}`,
                 },
                 (payload) => {
-                    console.log('Profile updated via Realtime:', payload);
-                    // Update user state with new data from payload
                     const updatedData = payload.new as any;
-                    setUser(prev => prev ? {
+                    setUser((prev) => prev ? {
                         ...prev,
                         fullName: updatedData.full_name || updatedData.FullName,
                         avatarUrl: updatedData.avatar_url || updatedData.AvatarUrl,
                         points: updatedData.points || updatedData.Points,
                         badge: updatedData.badge || updatedData.Badge,
                         school: updatedData.school || updatedData.School,
-                        major: updatedData.major || updatedData.Major
+                        major: updatedData.major || updatedData.Major,
                     } : null);
                 }
             )
@@ -141,30 +182,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [user?.id]);
 
     const login = (token: string, refreshToken: string, newUser: User) => {
-        localStorage.setItem('accessToken', token);
-        localStorage.setItem('refreshToken', refreshToken);
-        localStorage.setItem('user', JSON.stringify(newUser));
-        setUser(newUser);
+        persistUser(newUser, token, refreshToken);
+        void supabase.auth.setSession({ access_token: token, refresh_token: refreshToken }).then(({ error }) => {
+            if (error) {
+                console.warn('[Auth] supabase.auth.setSession:', error.message);
+            }
+        });
         showToast({
             type: 'success',
-            title: 'Đăng nhập thành công',
-            message: `Chào mừng ${newUser.fullName || newUser.email} trở lại!`,
-            duration: 4000
-        });
-    };
-
-    const logout = () => {
-        const oldUser = user;
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-        setUser(null);
-        supabase.auth.signOut().catch(() => { });
-        showToast({
-            type: 'info',
-            title: 'Hẹn gặp lại',
-            message: `Tạm biệt ${oldUser?.fullName || 'bạn'}!`,
-            duration: 3000
+            title: 'Dang nhap thanh cong',
+            message: `Chao mung ${newUser.fullName || newUser.email} tro lai!`,
+            duration: 4000,
         });
     };
 
@@ -178,9 +206,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             showToast({
                 type: 'success',
-                title: 'Thành công',
-                message: 'Thông tin cá nhân đã được cập nhật.',
-                duration: 4000
+                title: 'Thanh cong',
+                message: 'Thong tin ca nhan da duoc cap nhat.',
+                duration: 4000,
             });
             return true;
         } catch (error) {

@@ -16,16 +16,28 @@ public static class DependencyInjection
         var supabaseAnonKey = configuration["Supabase:AnonKey"] ?? Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY");
         var supabaseServiceRoleKey = configuration["Supabase:ServiceRoleKey"] ?? Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY");
 
-        if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabaseKey))
+        static bool IsPlaceholder(string? v) =>
+            string.IsNullOrWhiteSpace(v) ||
+            v.StartsWith("YOUR_", StringComparison.Ordinal);
+
+        // ServiceRoleKey > Key > AnonKey — tránh chọn Anon khi Key đã là service (lỗi cũ gây INSERT bị RLS chặn).
+        var clientKey =
+            !IsPlaceholder(supabaseServiceRoleKey) ? supabaseServiceRoleKey :
+            !IsPlaceholder(supabaseKey) ? supabaseKey :
+            !IsPlaceholder(supabaseAnonKey) ? supabaseAnonKey : null;
+
+        if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(clientKey))
         {
-            throw new Exception("Supabase configuration is missing. Please check appsettings.json or set environment variables (SUPABASE_URL, SUPABASE_KEY).");
+            throw new InvalidOperationException(
+                "Supabase chưa cấu hình đủ. Cần Supabase:Url và một trong: ServiceRoleKey (khuyến nghị), Key (service role), hoặc AnonKey tạm dev.");
         }
 
-        // Use service role key for backend (bypasses RLS), anon key for frontend client
-        // Priority: ServiceRoleKey > AnonKey > Key
-        var clientKey = !string.IsNullOrEmpty(supabaseServiceRoleKey) 
-            ? supabaseServiceRoleKey 
-            : (!string.IsNullOrEmpty(supabaseAnonKey) ? supabaseAnonKey : supabaseKey);
+        if (!IsPlaceholder(supabaseAnonKey) &&
+            string.Equals(clientKey, supabaseAnonKey, StringComparison.Ordinal))
+        {
+            throw new InvalidOperationException(
+                "Backend không được dùng Supabase AnonKey làm key chính (RLS sẽ chặn INSERT/UPDATE). Đặt Supabase:ServiceRoleKey hoặc Supabase:Key = service_role secret từ Supabase Dashboard → Settings → API.");
+        }
 
         services.AddScoped<Client>(provider => 
         {
@@ -43,6 +55,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IChatService, ChatService>();
         services.AddHttpClient<IAiService, AiService>();
         
         // Add Realtime Monitor Background Service

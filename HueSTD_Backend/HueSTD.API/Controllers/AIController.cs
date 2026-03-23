@@ -53,15 +53,20 @@ public class AI : ControllerBase
         try
         {
             var user = await GetAuthenticatedUserAsync();
+            if (user == null)
+            {
+                return Unauthorized(new { success = false, error = "Vui lòng đăng nhập để sử dụng AI." });
+            }
+
             _logger.LogInformation("[AI Controller] Chat request received. Message: {Message}, UserId: {UserId}",
-                request.Message?.Substring(0, Math.Min(100, request.Message?.Length ?? 0)), user?.Id);
+                request.Message?.Substring(0, Math.Min(100, request.Message?.Length ?? 0)), user.Id);
 
             if (string.IsNullOrWhiteSpace(request.Message))
             {
                 return BadRequest(new { success = false, error = "Message is required" });
             }
 
-            var result = await _aiService.ChatAsync(request, user?.Id);
+            var result = await _aiService.ChatAsync(request, user.Id);
 
             if (result.Success)
             {
@@ -324,7 +329,7 @@ public class AI : ControllerBase
         try
         {
             var user = await GetAuthenticatedUserAsync();
-            if (user == null) return Unauthorized();
+            if (user == null) return Unauthorized(new { error = "Vui lòng đăng nhập để xem trạng thái AI." });
 
             var usage = await _adminService.GetUserAiUsageAsync(user.Id);
             var hasDedicatedApi = !string.IsNullOrWhiteSpace(usage?.ApiKey);

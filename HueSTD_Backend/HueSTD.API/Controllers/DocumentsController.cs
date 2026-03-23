@@ -122,11 +122,11 @@ public class DocumentsController : ControllerBase
         }
 
         // Validate file type
-        var allowedExtensions = new[] { ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt" };
+        var allowedExtensions = new[] { ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".zip", ".rar" };
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
         if (!allowedExtensions.Contains(ext))
         {
-            return BadRequest(new { message = "File type not allowed. Allowed: PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT" });
+            return BadRequest(new { message = "File type not allowed. Allowed: images, PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT, ZIP, RAR" });
         }
 
         // Max 50MB

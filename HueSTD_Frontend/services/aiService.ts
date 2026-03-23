@@ -186,8 +186,11 @@ export interface MyAiUsage {
 export const getMyAiUsage = async (): Promise<MyAiUsage> => {
     const { default: api } = await import('./api');
     const token = localStorage.getItem('accessToken');
+    if (!token) {
+        throw Object.assign(new Error('not_authenticated'), { status: 401 });
+    }
     const response = await api.get('/AI/my-usage', {
-        headers: token ? { Authorization: `Bearer ${token}` } : {}
+        headers: { Authorization: `Bearer ${token}` }
     });
     return response.data;
 };

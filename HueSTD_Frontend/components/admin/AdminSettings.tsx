@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Key, Save, Eye, EyeOff, AlertCircle, CheckCircle, Bot, Users, MessageSquare, RotateCcw, Lock, Unlock, Check, X, Search, ChevronLeft, ChevronRight, Loader2, Database, Trash2 } from 'lucide-react';
+import { Key, Save, Eye, EyeOff, AlertCircle, CheckCircle, Bot, Users, RotateCcw, Lock, Unlock, Check, X, Search, ChevronLeft, ChevronRight, Loader2, Database, Trash2 } from 'lucide-react';
 import api from '../../services/api';
 import { supabase } from '../../services/supabase';
 
@@ -18,6 +18,7 @@ interface UserAiUsage {
     updatedAt: string;
 }
 
+/*
 interface UnlockRequest {
     id: string;
     userId: string;
@@ -28,6 +29,7 @@ interface UnlockRequest {
     adminNote?: string;
     createdAt: string;
 }
+*/
 
 const PAGE_SIZE = 10;
 
@@ -71,7 +73,7 @@ const AdminSettings: React.FC = () => {
     const [totalCount, setTotalCount] = useState(0);
     const [currentPage, setCurrentPage] = useState(1);
     const [searchQuery, setSearchQuery] = useState('');
-    const [unlockRequests, setUnlockRequests] = useState<UnlockRequest[]>([]);
+    // const [unlockRequests, setUnlockRequests] = useState<UnlockRequest[]>([]);
     const [loadingUsers, setLoadingUsers] = useState(false);
     const [editingUser, setEditingUser] = useState<string | null>(null);
     const [editForm, setEditForm] = useState({ messageLimit: 10, apiKey: '', isUnlocked: false });
@@ -140,6 +142,7 @@ const AdminSettings: React.FC = () => {
         }
     }, []);
 
+    /*
     const fetchUnlockRequests = useCallback(async () => {
         try {
             const response = await api.get('/AI/unlock-requests?status=pending');
@@ -148,6 +151,7 @@ const AdminSettings: React.FC = () => {
             console.error('Failed to fetch unlock requests:', error);
         }
     }, []);
+    */
 
     const fetchDedicatedApiUsers = useCallback(async () => {
         try {
@@ -269,12 +273,7 @@ const AdminSettings: React.FC = () => {
         }
 
         const channel = supabase
-            .channel('admin_ai_usages_realtime', {
-                config: {
-                    broadcast: { self: false },
-                    postgres: { filter: {} }
-                }
-            })
+            .channel('admin_ai_usages_realtime')
             .on(
                 'postgres_changes',
                 {
@@ -283,7 +282,7 @@ const AdminSettings: React.FC = () => {
                     table: 'user_ai_usages'
                 },
                 (payload) => {
-                    console.log('[AdminSettings] 🚀 Realtime event received:', payload.eventType, payload.new?.user_id);
+                    console.log('[AdminSettings] 🚀 Realtime event received:', payload.eventType, (payload.new as any)?.user_id);
                     const tab = activeTabRef.current;
                     if (tab === 'custom') {
                         fetchUserUsages(currentPageRef.current, searchQueryRef.current);
@@ -325,7 +324,7 @@ const AdminSettings: React.FC = () => {
     useEffect(() => {
         if (activeTab === 'custom') {
             fetchUserUsages(currentPage, searchQuery);
-            fetchUnlockRequests();
+            // fetchUnlockRequests(); // commented out: no user-facing unlock requests
         } else if (activeTab === 'api') {
             fetchDedicatedApiUsers();
         }
@@ -426,6 +425,7 @@ const AdminSettings: React.FC = () => {
         }
     };
 
+    /*
     const handleApproveRequest = async (requestId: string) => {
         try {
             setProcessing(requestId);
@@ -457,6 +457,7 @@ const AdminSettings: React.FC = () => {
             setProcessing(null);
         }
     };
+    */
 
     const maskKey = (key: string) => {
         if (key.length <= 8) return '*'.repeat(key.length);
@@ -470,8 +471,6 @@ const AdminSettings: React.FC = () => {
             </div>
         );
     }
-
-    const pendingCount = unlockRequests.filter(r => r.status === 'pending').length;
 
     return (
         <div className="space-y-6">
@@ -504,11 +503,6 @@ const AdminSettings: React.FC = () => {
                 >
                     <Users size={16} />
                     Custom User
-                    {pendingCount > 0 && (
-                        <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                            {pendingCount}
-                        </span>
-                    )}
                 </button>
                 <button
                     onClick={() => handleTabChange('api')}
@@ -623,7 +617,7 @@ const AdminSettings: React.FC = () => {
             {/* ===== CUSTOM USER TAB ===== */}
             {activeTab === 'custom' && (
                 <>
-                    {/* Unlock Requests Section */}
+                    {/* Unlock Requests Section — COMMENTED OUT: user must be logged in to use AI
                     {unlockRequests.length > 0 && (
                         <div className="bg-white rounded-lg shadow p-6">
                             <div className="flex items-center gap-3 mb-4">
@@ -671,6 +665,7 @@ const AdminSettings: React.FC = () => {
                             </div>
                         </div>
                     )}
+                    */}
 
                     {/* User AI Usage Table */}
                     <div className="bg-white rounded-lg shadow p-6">

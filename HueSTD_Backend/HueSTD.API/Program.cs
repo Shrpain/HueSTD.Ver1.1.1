@@ -81,6 +81,29 @@ using (var scope = app.Services.CreateScope())
 }
 
 // Configure the HTTP request pipeline.
+// Exception handler phải đứng TRƯỚC MapControllers để bắt lỗi từ API.
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = 500;
+        context.Response.ContentType = "application/json";
+
+        var exceptionHandlerPathFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>();
+        var exception = exceptionHandlerPathFeature?.Error;
+
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(exception, "Unhandled exception occurred");
+
+        await context.Response.WriteAsJsonAsync(new
+        {
+            message = "An error occurred while processing your request.",
+            detail = app.Environment.IsDevelopment() ? exception?.Message : null,
+            stack = app.Environment.IsDevelopment() ? exception?.StackTrace : null
+        });
+    });
+});
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
@@ -90,26 +113,5 @@ app.UseCors("AllowFrontend");
 
 app.UseAuthorization();
 app.MapControllers();
-
-// Global Exception Handler
-app.UseExceptionHandler(errorApp =>
-{
-    errorApp.Run(async context =>
-    {
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/json";
-        
-        var exceptionHandlerPathFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>();
-        var exception = exceptionHandlerPathFeature?.Error;
-        
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(exception, "Unhandled exception occurred");
-        
-        await context.Response.WriteAsJsonAsync(new { 
-            message = "An error occurred while processing your request.",
-            detail = app.Environment.IsDevelopment() ? exception?.Message : null
-        });
-    });
-});
 
 app.Run();

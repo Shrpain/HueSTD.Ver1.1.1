@@ -6,11 +6,11 @@ import { supabase } from './services/supabase';
 import api from './services/api';
 import { AppTab, User } from './types';
 
-// Đồng bộ URL với tab: pathname <-> AppTab
 const PATH_TO_TAB: Record<string, AppTab> = {
   '/': AppTab.DASHBOARD,
   '/dashboard': AppTab.DASHBOARD,
   '/documents': AppTab.DOCUMENTS,
+  '/chat': AppTab.CHAT,
   '/notifications': AppTab.NOTIFICATIONS,
   '/profile': AppTab.PROFILE,
   '/admin': AppTab.ADMIN,
@@ -18,6 +18,7 @@ const PATH_TO_TAB: Record<string, AppTab> = {
 const TAB_TO_PATH: Record<AppTab, string> = {
   [AppTab.DASHBOARD]: '/',
   [AppTab.DOCUMENTS]: '/documents',
+  [AppTab.CHAT]: '/chat',
   [AppTab.NOTIFICATIONS]: '/notifications',
   [AppTab.PROFILE]: '/profile',
   [AppTab.ADMIN]: '/admin',
@@ -30,13 +31,13 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import Dashboard from './components/Dashboard';
 import DocumentModule from './components/DocumentModule';
+import ChatModule from './components/chat/ChatModule';
 import AdminModule from './components/AdminModule';
 import AdminLayout from './components/admin/AdminLayout';
 import ProfileModule from './components/ProfileModule';
 import NotificationModule from './components/NotificationModule';
 import AuthModule from './components/AuthModule';
 
-// Lắng nghe sự kiện notification-realtime để hiện toast toàn cục
 const GlobalNotificationListener: React.FC = () => {
   const { user } = useAuth();
   const { showToast } = useToast();
@@ -58,7 +59,6 @@ const GlobalNotificationListener: React.FC = () => {
             duration: 6000
           });
           
-          // Refresh list if needed via event
           window.dispatchEvent(new Event('REFRESH_NOTIFICATIONS'));
         }
       )
@@ -72,7 +72,6 @@ const GlobalNotificationListener: React.FC = () => {
   return null;
 };
 
-// Lắng nghe sự kiện auth-toast (sau đăng nhập Google) và xử lý lỗi OAuth từ URL
 const AuthToastListener: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { showToast } = useToast();
   useEffect(() => {
@@ -86,7 +85,6 @@ const AuthToastListener: React.FC<{ children: React.ReactNode }> = ({ children }
     return () => window.removeEventListener('auth-toast', handler as EventListener);
   }, [showToast]);
 
-  // Khi redirect về với ?error=... (OAuth thất bại) → hiện toast và xóa query
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const error = params.get('error');
@@ -104,7 +102,6 @@ const AuthToastListener: React.FC<{ children: React.ReactNode }> = ({ children }
   return <>{children}</>;
 };
 
-// Helper function to convert AuthContext user to types.ts User format
 const mapAuthUserToUser = (authUser: any): User | null => {
   if (!authUser) return null;
   return {
@@ -124,7 +121,6 @@ const mapAuthUserToUser = (authUser: any): User | null => {
   };
 };
 
-// Inner App component that uses AuthContext
 const AppContent: React.FC = () => {
   const { user: authUser, isAuthenticated, logout } = useAuth();
   const location = useLocation();
@@ -132,13 +128,11 @@ const AppContent: React.FC = () => {
   const activeTab = pathnameToTab(location.pathname);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // Track page view on every navigation
   useEffect(() => {
     api.post('/Dashboard/track-view', null, { params: { pagePath: activeTab } }).catch(() => {});
   }, [activeTab]);
   const [showAuthModal, setShowAuthModal] = useState(false);
 
-  // Convert auth user to User type for components
   const user = mapAuthUserToUser(authUser);
 
   const handleLogin = () => {
@@ -176,6 +170,23 @@ const AppContent: React.FC = () => {
     switch (activeTab) {
       case AppTab.DASHBOARD: return <Dashboard setActiveTab={(tab) => navigate(TAB_TO_PATH[tab])} />;
       case AppTab.DOCUMENTS: return <DocumentModule onRequireLogin={() => setShowAuthModal(true)} />;
+      case AppTab.CHAT: return isAuthenticated ? <ChatModule /> : (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6">
+          <div className="w-20 h-20 bg-teal-50 rounded-full flex items-center justify-center text-teal-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z" /></svg>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-slate-800">Tin nhắn</h2>
+            <p className="text-slate-500 max-w-sm mx-auto font-medium">Vui lòng đăng nhập để sử dụng tính năng nhắn tin.</p>
+          </div>
+          <button
+            onClick={() => setShowAuthModal(true)}
+            className="bg-teal-600 text-white px-8 py-3 rounded-2xl font-black shadow-xl shadow-teal-100 hover:bg-teal-700 transition-all active:scale-95"
+          >
+            Đăng nhập ngay
+          </button>
+        </div>
+      );
       case AppTab.NOTIFICATIONS: return <NotificationModule />;
       case AppTab.ADMIN: return <AdminModule initialTab="support" />;
       case AppTab.PROFILE: return user ? <ProfileModule user={user} /> : null;
@@ -188,14 +199,12 @@ const AppContent: React.FC = () => {
     setIsSidebarOpen(false);
   };
 
-  // --- ADMIN REDIRECT: đồng bộ URL /admin khi đăng nhập admin (trong useEffect để tránh cập nhật khi render)
   useEffect(() => {
     if (user?.role === 'admin' && !location.pathname.startsWith('/admin')) {
       navigate('/admin', { replace: true });
     }
   }, [user?.role, location.pathname, navigate]);
 
-  // --- ADMIN: render Admin Layout
   if (user && user.role === 'admin') {
     return (
       <>
@@ -211,8 +220,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      {/* Auth Modal */}
+    <div className={`flex bg-slate-50 ${activeTab === AppTab.CHAT ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       {showAuthModal && (
         <AuthModule
           onClose={() => setShowAuthModal(false)}
@@ -220,7 +228,6 @@ const AppContent: React.FC = () => {
         />
       )}
 
-      {/* Main UI */}
       <Sidebar
         activeTab={activeTab}
         setActiveTab={handleTabChange}
@@ -232,7 +239,7 @@ const AppContent: React.FC = () => {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      <div className="flex-1 flex flex-col min-w-0 md:ml-64">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 md:ml-64 overflow-hidden">
         <Header
           user={user}
           isLoggedIn={isAuthenticated}
@@ -241,11 +248,15 @@ const AppContent: React.FC = () => {
           onShowAuth={() => setShowAuthModal(true)}
           onNotificationClick={() => handleTabChange(AppTab.NOTIFICATIONS)}
         />
-        <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-7xl mx-auto w-full">
+        <main
+          className={`flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full ${
+            activeTab === AppTab.CHAT ? 'overflow-hidden min-h-0 flex' : 'overflow-y-auto'
+          }`}
+        >
           {renderContent()}
         </main>
 
-        <footer className="p-4 text-center text-slate-400 text-sm border-t bg-white">
+        <footer className="shrink-0 p-4 text-center text-slate-400 text-sm border-t bg-white">
           &copy; 2026 HueSTD - Nền tảng sinh viên Thừa Thiên Huế
         </footer>
       </div>
@@ -255,7 +266,6 @@ const AppContent: React.FC = () => {
 
 import { Analytics } from '@vercel/analytics/react';
 
-// Main App wrapper with ToastProvider + AuthProvider + AuthToastListener
 const App: React.FC = () => {
   return (
     <ToastProvider>

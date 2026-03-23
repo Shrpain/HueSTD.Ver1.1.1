@@ -1,6 +1,7 @@
 export enum AppTab {
   DASHBOARD = 'dashboard',
   DOCUMENTS = 'documents',
+  CHAT = 'chat',
   ADMIN = 'admin',
   PROFILE = 'profile',
   NOTIFICATIONS = 'notifications'

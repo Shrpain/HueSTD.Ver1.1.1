@@ -15,7 +15,7 @@ interface AIChatPanelProps {
 }
 
 const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText, onClose }) => {
-    const { user } = useAuth();
+    const { user, isAuthenticated } = useAuth();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isTyping, setIsTyping] = useState(false);
@@ -24,6 +24,7 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
     const [isLimitExceeded, setIsLimitExceeded] = useState(false);
     const [remainingMessages, setRemainingMessages] = useState<number | null>(null);
     const [hasDedicatedApi, setHasDedicatedApi] = useState(false);
+    const [notAuthenticated, setNotAuthenticated] = useState(false);
 
     const messagesContainerRef = useRef<HTMLDivElement>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -36,8 +37,12 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
             setHasDedicatedApi(dedicated);
             setRemainingMessages(usage.remaining);
             setIsLimitExceeded(!dedicated && !usage.isUnlocked && usage.remaining <= 0);
-        } catch {
-            // Not logged in or error - silently ignore
+            setNotAuthenticated(false);
+        } catch (err: any) {
+            if (err?.status === 401 || err?.error?.status === 401) {
+                setNotAuthenticated(true);
+                setIsAiReady(true);
+            }
         }
     }, []);
 
@@ -118,7 +123,15 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
                     }
                 } catch (err: any) {
                     if (mounted) {
-                        if (err.errorCode === 'limit_exceeded') {
+                        if (err.status === 401 || err.error?.status === 401) {
+                            setMessages([{
+                                id: 'unauth',
+                                role: 'assistant',
+                                content: 'Vui lòng đăng nhập để sử dụng AI.',
+                                timestamp: new Date()
+                            }]);
+                            setNotAuthenticated(true);
+                        } else if (err.errorCode === 'limit_exceeded') {
                             setMessages([{ id: 'limit', role: 'assistant', content: err.message, timestamp: new Date() }]);
                             setIsLimitExceeded(true);
                         } else {
@@ -155,7 +168,7 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
 
     const handleSendMessage = async (e?: React.FormEvent) => {
         if (e) e.preventDefault();
-        if (!inputValue.trim() || isTyping || !isAiReady || isLimitExceeded) return;
+        if (!inputValue.trim() || isTyping || !isAiReady || isLimitExceeded || notAuthenticated) return;
 
         const userMsg: ChatMessage = { id: Date.now().toString(), role: 'user', content: inputValue, timestamp: new Date() };
         setMessages(prev => [...prev, userMsg]);
@@ -168,7 +181,15 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
             setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: responseText, timestamp: new Date() }]);
             fetchUsage();
         } catch (err: any) {
-            if (err.errorCode === 'limit_exceeded') {
+            if (err.status === 401 || err.error?.status === 401) {
+                setMessages(prev => [...prev, {
+                    id: (Date.now() + 1).toString(),
+                    role: 'assistant',
+                    content: 'Phiên đăng nhập hết hạn. Vui lòng đăng nhập lại.',
+                    timestamp: new Date()
+                }]);
+                setNotAuthenticated(true);
+            } else if (err.errorCode === 'limit_exceeded') {
                 setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: err.message, timestamp: new Date() }]);
                 setIsLimitExceeded(true);
             } else {
@@ -179,10 +200,21 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
         }
     };
 
-    const isDisabled = (!hasDedicatedApi && isLimitExceeded) || !isAiReady;
+    const isDisabled = (!hasDedicatedApi && isLimitExceeded) || !isAiReady || notAuthenticated;
 
     return (
         <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }} className="bg-slate-50">
+            {/* Chưa đăng nhập — yêu cầu đăng nhập */}
+            {notAuthenticated && (
+                <div className="mx-4 mt-3 bg-slate-100 border border-slate-300 rounded-xl p-3 flex items-start gap-3 text-slate-700 text-sm">
+                    <Lock size={16} className="mt-0.5 shrink-0 text-slate-500" />
+                    <div>
+                        <p className="font-semibold">Bạn chưa đăng nhập</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Vui lòng đăng nhập để sử dụng tính năng Hỏi AI.</p>
+                    </div>
+                </div>
+            )}
+
             {/* API riêng — không giới hạn */}
             {hasDedicatedApi && (
                 <div className="mx-4 mt-3 bg-emerald-50 border border-emerald-200 rounded-lg p-2 flex items-center gap-2 text-emerald-800 text-xs">
@@ -304,11 +336,13 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
                             }
                         }}
                         placeholder={
-                            isLimitExceeded
-                                ? "Bạn đã hết lượt..."
-                                : !isAiReady
-                                    ? "AI đang đọc tài liệu..."
-                                    : "Hỏi gì đó về tài liệu này..."
+                            notAuthenticated
+                                ? "Vui lòng đăng nhập để sử dụng AI..."
+                                : isLimitExceeded
+                                    ? "Bạn đã hết lượt..."
+                                    : !isAiReady
+                                        ? "AI đang đọc tài liệu..."
+                                        : "Hỏi gì đó về tài liệu này..."
                         }
                         className="flex-1 bg-transparent border-0 focus:ring-0 p-2 text-sm text-slate-700 resize-none max-h-24 min-h-[40px] outline-none disabled:cursor-not-allowed"
                         rows={1}

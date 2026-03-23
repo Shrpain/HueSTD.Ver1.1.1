@@ -58,7 +58,7 @@ export const downloadFile = async (url: string, fileName: string) => {
       method: 'GET',
       responseType: 'blob',
     });
-    
+
     // Create a temporary link element to trigger the download
     const blob = new Blob([response.data]);
     const blobUrl = window.URL.createObjectURL(blob);
@@ -67,7 +67,7 @@ export const downloadFile = async (url: string, fileName: string) => {
     link.setAttribute('download', fileName);
     document.body.appendChild(link);
     link.click();
-    
+
     // Cleanup
     if (link.parentNode) {
       link.parentNode.removeChild(link);
