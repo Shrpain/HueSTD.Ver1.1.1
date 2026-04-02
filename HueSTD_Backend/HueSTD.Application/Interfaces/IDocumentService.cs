@@ -5,6 +5,7 @@ namespace HueSTD.Application.Interfaces;
 public interface IDocumentService
 {
     Task<IEnumerable<DocumentDto>> GetAllDocumentsAsync();
+    Task<IReadOnlyList<DocumentDto>> SearchDocumentsForAssistantAsync(string query, string? preferredSchool = null, int limit = 5);
     Task<DocumentDto?> CreateDocumentAsync(Guid userId, CreateDocumentRequest request);
     Task<DocumentDto?> GetDocumentByIdAsync(Guid documentId);
     Task<bool> IncrementViewsAsync(Guid documentId);

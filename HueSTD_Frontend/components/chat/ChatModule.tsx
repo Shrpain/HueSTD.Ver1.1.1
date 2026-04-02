@@ -9,10 +9,18 @@ import ChatList from './ChatList';
 import ChatWindow from './ChatWindow';
 import NewChatModal from './NewChatModal';
 
+interface DraftDirectChatUser {
+  id: string;
+  fullName: string | null;
+  avatarUrl: string | null;
+  email: string | null;
+}
+
 const ChatModule: React.FC = () => {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
   const [selectedConversation, setSelectedConversation] = useState<ConversationListItem | null>(null);
+  const [draftDirectChat, setDraftDirectChat] = useState<DraftDirectChatUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [showNewChat, setShowNewChat] = useState(false);
   const conversationsRef = useRef(conversations);
@@ -159,6 +167,7 @@ const ChatModule: React.FC = () => {
   });
 
   const handleConversationSelect = (conv: ConversationListItem) => {
+    setDraftDirectChat(null);
     setSelectedConversation(conv);
     setConversations((prev) =>
       prev.map((item) => (item.id === conv.id ? { ...item, unreadCount: 0 } : item))
@@ -189,32 +198,31 @@ const ChatModule: React.FC = () => {
     };
   };
 
-  const handleNewChat = async (peerUserId: string) => {
-    try {
-      const { data } = await chatService.createDirectConversation({ userId: peerUserId });
-      const listItem = conversationToListItem(data, peerUserId);
-      await fetchConversations();
+  const handleDraftChatReady = useCallback(
+    (conversation: Conversation, peerUserId: string) => {
+      const listItem = conversationToListItem(conversation, peerUserId);
+      setDraftDirectChat(null);
       setSelectedConversation(listItem);
+      void fetchConversations();
+    },
+    [fetchConversations]
+  );
+
+  const handleNewChat = (peer: DraftDirectChatUser) => {
+    const existingConversation = conversations.find(
+      (conversation) =>
+        conversation.type === 'direct' && String(conversation.otherUserId) === String(peer.id)
+    );
+
+    if (existingConversation) {
+      handleConversationSelect(existingConversation);
       setShowNewChat(false);
-    } catch (error: unknown) {
-      console.error('Failed to create conversation:', error);
-      let msg = 'Khong the tao cuoc tro chuyen. Hay khoi dong lai API backend va thu lai.';
-      if (
-        error &&
-        typeof error === 'object' &&
-        'response' in error &&
-        error.response &&
-        typeof error.response === 'object' &&
-        'data' in error.response &&
-        error.response.data &&
-        typeof error.response.data === 'object'
-      ) {
-        const d = error.response.data as { message?: unknown; detail?: unknown };
-        const parts = [d.message, d.detail].filter(Boolean).map(String);
-        if (parts.length) msg = parts.join('\n');
-      }
-      window.alert(msg);
+      return;
     }
+
+    setSelectedConversation(null);
+    setDraftDirectChat(peer);
+    setShowNewChat(false);
   };
 
   return (
@@ -227,25 +235,36 @@ const ChatModule: React.FC = () => {
         loading={loading}
       />
 
-      {selectedConversation ? (
+      {selectedConversation || draftDirectChat ? (
         <ChatWindow
-          conversationId={selectedConversation.id}
-          conversationType={selectedConversation.type}
+          conversationId={selectedConversation?.id}
+          conversationType={selectedConversation?.type || 'direct'}
           conversationName={
-            selectedConversation.type === 'direct'
+            selectedConversation?.type === 'direct'
               ? selectedConversation.otherUserName
-              : selectedConversation.name
+              : selectedConversation?.name || draftDirectChat?.fullName || draftDirectChat?.email || 'Nguoi dung'
           }
           conversationAvatar={
-            selectedConversation.type === 'direct'
+            selectedConversation?.type === 'direct'
               ? selectedConversation.otherUserAvatar
-              : undefined
+              : draftDirectChat?.avatarUrl || undefined
           }
           currentUserId={user?.id || ''}
           onTyping={sendTyping}
           onMessageBroadcast={sendMessageBroadcast}
           onConversationUpdate={syncConversationActivity}
           isRealtimeConnected={isConnected}
+          draftPeer={
+            draftDirectChat
+              ? {
+                  userId: draftDirectChat.id,
+                  userName: draftDirectChat.fullName || draftDirectChat.email || 'Nguoi dung',
+                  userAvatar: draftDirectChat.avatarUrl || '',
+                  email: draftDirectChat.email || '',
+                }
+              : undefined
+          }
+          onDraftConversationCreated={handleDraftChatReady}
         />
       ) : (
         <div className="flex-1 min-h-0 flex items-center justify-center bg-slate-50">

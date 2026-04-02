@@ -2,6 +2,10 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Read First
+
+Before making assumptions about product scope or project progress, read `PROJECT_CONTEXT.md` in the repo root first. It is the short project memory file for this codebase.
+
 ## Project Overview
 
 HueSTD is a full-stack application with:
@@ -92,3 +96,32 @@ Tuy nhiên, **KHÔNG dùng MCP cho các tác vụ thông thường** (đọc dat
 - `get_publishable_keys` / `get_project_url` — Lấy config
 - `generate_typescript_types` — Generate types từ schema
 - Git operations: `create_branch`, `list_branches`, `merge_branch`, etc.
+
+
+
+
+
+
+Đã kill xong frontend và backend.
+
+Chạy trong terminal như sau.
+
+Backend:
+
+cd C:\khoaLuan\HueSTD_Backend\HueSTD.API
+dotnet build
+dotnet run
+Frontend:
+
+cd C:\khoaLuan\HueSTD_Frontend
+npm run build
+npm run dev
+URL sau khi chạy:
+
+Backend: http://localhost:5136/swagger
+Frontend: http://localhost:3000
+Nếu muốn rebuild sạch hơn trước khi chạy backend, dùng thêm:
+
+dotnet clean
+dotnet build
+

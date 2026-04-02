@@ -5,7 +5,7 @@ import { uploadDocumentFile } from '../../services/api';
 import { Conversation, Message, TypingStatus } from '../../types/chat';
 
 interface ChatWindowProps {
-  conversationId: string;
+  conversationId?: string;
   conversationType: 'direct' | 'group';
   conversationName?: string;
   conversationAvatar?: string;
@@ -14,6 +14,13 @@ interface ChatWindowProps {
   onMessageBroadcast: (message: Message) => void;
   onConversationUpdate: (message: Message, options?: { markRead?: boolean }) => void;
   isRealtimeConnected: boolean;
+  draftPeer?: {
+    userId: string;
+    userName: string;
+    userAvatar: string;
+    email?: string;
+  };
+  onDraftConversationCreated?: (conversation: Conversation, peerUserId: string) => void;
 }
 
 const RECENT_BUFFER_TTL_MS = 10000;
@@ -28,7 +35,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   onMessageBroadcast,
   onConversationUpdate,
   isRealtimeConnected,
+  draftPeer,
+  onDraftConversationCreated,
 }) => {
+  const isDraftConversation = !conversationId && !!draftPeer;
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversation, setConversation] = useState<Conversation | null>(null);
   const [newMessage, setNewMessage] = useState('');
@@ -52,6 +63,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   isRealtimeConnectedRef.current = isRealtimeConnected;
   conversationRef.current = conversation;
+
+  const getAvatarFallback = useCallback((name?: string, email?: string) => {
+    const seed = name || email || 'U';
+    return `https://ui-avatars.com/api/?name=${encodeURIComponent(seed)}&background=0d9488&color=fff&size=100`;
+  }, []);
 
   const sortMessages = useCallback(
     (items: Message[]) =>
@@ -156,6 +172,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
 
   const fetchMessages = useCallback(
     async (opts?: { merge?: boolean; silent?: boolean }) => {
+      if (!conversationId) {
+        setMessages([]);
+        if (!opts?.silent) setLoading(false);
+        return;
+      }
+
       const merge = opts?.merge ?? false;
       const silent = opts?.silent ?? false;
       const requestId = ++latestMessagesRequestRef.current;
@@ -190,6 +212,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   );
 
   const fetchConversation = useCallback(async () => {
+    if (!conversationId) {
+      setConversation(null);
+      return;
+    }
+
     try {
       const { data } = await chatService.getConversation(conversationId);
       setConversation(data);
@@ -211,8 +238,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     setMessages([]);
     setConversation(null);
     recentBufferedMessagesRef.current.clear();
-    void fetchMessages();
-    void fetchConversation();
+    if (conversationId) {
+      void fetchMessages();
+      void fetchConversation();
+    } else {
+      setLoading(false);
+    }
 
     return () => {
       latestMessagesRequestRef.current += 1;
@@ -224,7 +255,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         clearTimeout(typingIndicatorTimeoutRef.current);
       }
     };
-  }, [conversationId, fetchConversation, fetchMessages]);
+  }, [clearSelectedFile, conversationId, fetchConversation, fetchMessages]);
 
   useEffect(() => {
     if (!conversationId || loading) return;
@@ -352,10 +383,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     if ((!content && !selectedFile) || sending) return;
 
     const tempId = `temp-${Date.now()}`;
+    const effectiveConversationId = conversationId || `draft-${draftPeer?.userId || 'peer'}`;
     const tempFileUrl = selectedFilePreviewUrl || undefined;
     const tempMessage: Message = {
       id: tempId,
-      conversationId,
+      conversationId: effectiveConversationId,
       senderId: currentUserId,
       senderName: 'Ban',
       senderAvatar: '',
@@ -377,6 +409,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     pendingSendRef.current = true;
 
     try {
+      let resolvedConversationId = conversationId;
       let uploadedFileUrl: string | undefined;
       let uploadedFileName: string | undefined;
 
@@ -386,7 +419,19 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         uploadedFileName = uploadResult.fileName;
       }
 
-      const { data } = await chatService.sendMessage(conversationId, {
+      if (!resolvedConversationId && draftPeer) {
+        const { data: createdConversation } = await chatService.createDirectConversation({
+          userId: draftPeer.userId,
+        });
+        resolvedConversationId = createdConversation.id;
+        onDraftConversationCreated?.(createdConversation, draftPeer.userId);
+      }
+
+      if (!resolvedConversationId) {
+        throw new Error('Conversation ID is required before sending a message.');
+      }
+
+      const { data } = await chatService.sendMessage(resolvedConversationId, {
         content: content || uploadedFileName || selectedFile?.name || '',
         contentType: selectedFile ? 'file' : 'text',
         fileUrl: uploadedFileUrl,
@@ -401,7 +446,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
       clearSelectedFile();
       onMessageBroadcast(data);
       onConversationUpdate(data, { markRead: true });
-      await chatService.markAsRead(conversationId);
+      await chatService.markAsRead(resolvedConversationId);
       void fetchConversation();
     } catch (error) {
       console.error('Failed to send message:', error);
@@ -525,9 +570,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <img
               src={
                 conversationAvatar ||
-                `https://ui-avatars.com/api/?name=${encodeURIComponent(conversationName || 'U')}&background=0d9488&color=fff&size=100`
+                getAvatarFallback(conversationName, draftPeer?.email)
               }
               alt={conversationName}
+              onError={(event) => {
+                event.currentTarget.src = getAvatarFallback(conversationName, draftPeer?.email);
+              }}
               className="w-10 h-10 rounded-full object-cover"
             />
           ) : (
@@ -562,7 +610,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               <Send size={24} className="text-slate-400" />
             </div>
             <p className="text-slate-500 font-medium">Bat dau cuoc tro chuyen</p>
-            <p className="text-slate-400 text-sm mt-1">Gui tin nhan de bat dau</p>
+            <p className="text-slate-400 text-sm mt-1">
+              {isDraftConversation
+                ? 'Chi khi gui tin nhan dau tien thi cuoc tro chuyen moi xuat hien trong danh sach chat'
+                : 'Gui tin nhan de bat dau'}
+            </p>
           </div>
         ) : (
           <>
@@ -589,9 +641,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                           <img
                             src={
                               message.senderAvatar ||
-                              `https://ui-avatars.com/api/?name=${encodeURIComponent(message.senderName)}&background=0d9488&color=fff&size=40`
+                              getAvatarFallback(message.senderName)
                             }
                             alt={message.senderName}
+                            onError={(event) => {
+                              event.currentTarget.src = getAvatarFallback(message.senderName);
+                            }}
                             className="w-6 h-6 rounded-full"
                           />
                           <span className="text-xs font-bold text-slate-600">{message.senderName}</span>
@@ -732,7 +787,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
           </div>
           <button
             onClick={() => void handleSend()}
-            disabled={!newMessage.trim() || sending}
+            disabled={(!newMessage.trim() && !selectedFile) || sending}
             className="p-3 bg-teal-600 hover:bg-teal-700 disabled:bg-slate-300 text-white rounded-xl transition-colors shadow-lg shadow-teal-100"
           >
             <Send size={20} />

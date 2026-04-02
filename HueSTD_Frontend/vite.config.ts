@@ -14,6 +14,11 @@ export default defineConfig(({ mode }) => {
             target: 'http://localhost:5136',
             changeOrigin: true,
           },
+          '/hubs': {
+            target: 'http://localhost:5136',
+            changeOrigin: true,
+            ws: true,
+          },
         },
       },
       plugins: [react()],

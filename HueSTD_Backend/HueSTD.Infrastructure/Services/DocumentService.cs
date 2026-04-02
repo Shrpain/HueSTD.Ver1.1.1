@@ -63,6 +63,49 @@ public class DocumentService : IDocumentService
         });
     }
 
+    public async Task<IReadOnlyList<DocumentDto>> SearchDocumentsForAssistantAsync(string query, string? preferredSchool = null, int limit = 5)
+    {
+        var normalizedQuery = query?.Trim();
+        if (string.IsNullOrWhiteSpace(normalizedQuery))
+        {
+            return Array.Empty<DocumentDto>();
+        }
+
+        var documents = (await GetAllDocumentsAsync()).ToList();
+        if (documents.Count == 0)
+        {
+            return Array.Empty<DocumentDto>();
+        }
+
+        var keywords = normalizedQuery
+            .Split([' ', '\t', '\r', '\n', ',', '.', ';', ':', '-', '_', '/', '\\', '(', ')', '[', ']', '{', '}', '?', '!'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Where(token => token.Length >= 2)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (keywords.Length == 0)
+        {
+            keywords = [normalizedQuery];
+        }
+
+        var ranked = documents
+            .Select(doc => new
+            {
+                Document = doc,
+                Score = ScoreDocument(doc, normalizedQuery, keywords, preferredSchool)
+            })
+            .Where(x => x.Score > 0)
+            .OrderByDescending(x => x.Score)
+            .ThenByDescending(x => x.Document.Downloads)
+            .ThenByDescending(x => x.Document.Views)
+            .ThenByDescending(x => x.Document.CreatedAt)
+            .Take(Math.Max(1, limit))
+            .Select(x => x.Document)
+            .ToList();
+
+        return ranked;
+    }
+
     public async Task<DocumentDto?> CreateDocumentAsync(Guid userId, CreateDocumentRequest request)
     {
         var document = new Document
@@ -121,6 +164,61 @@ public class DocumentService : IDocumentService
             Downloads = newDoc.Downloads,
             CreatedAt = newDoc.CreatedAt
         };
+    }
+
+    private static int ScoreDocument(DocumentDto doc, string normalizedQuery, string[] keywords, string? preferredSchool)
+    {
+        var score = 0;
+
+        score += ScoreField(doc.Title, normalizedQuery, keywords, 10);
+        score += ScoreField(doc.Subject, normalizedQuery, keywords, 8);
+        score += ScoreField(doc.Type, normalizedQuery, keywords, 6);
+        score += ScoreField(doc.Description, normalizedQuery, keywords, 4);
+        score += ScoreField(doc.School, normalizedQuery, keywords, 4);
+        score += ScoreField(doc.Year, normalizedQuery, keywords, 2);
+
+        if (!string.IsNullOrWhiteSpace(preferredSchool) &&
+            !string.IsNullOrWhiteSpace(doc.School) &&
+            doc.School.Contains(preferredSchool, StringComparison.OrdinalIgnoreCase))
+        {
+            score += 5;
+        }
+
+        if (doc.Downloads > 0)
+        {
+            score += Math.Min(5, doc.Downloads / 10);
+        }
+
+        if (doc.Views > 0)
+        {
+            score += Math.Min(3, doc.Views / 20);
+        }
+
+        return score;
+    }
+
+    private static int ScoreField(string? field, string normalizedQuery, string[] keywords, int weight)
+    {
+        if (string.IsNullOrWhiteSpace(field))
+        {
+            return 0;
+        }
+
+        var score = 0;
+        if (field.Contains(normalizedQuery, StringComparison.OrdinalIgnoreCase))
+        {
+            score += weight * 3;
+        }
+
+        foreach (var keyword in keywords)
+        {
+            if (field.Contains(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                score += weight;
+            }
+        }
+
+        return score;
     }
 
     public async Task<bool> IncrementViewsAsync(Guid documentId)

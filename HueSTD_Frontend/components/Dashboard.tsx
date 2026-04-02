@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AppTab, Document } from '../types';
 import { FileText, TrendingUp, Users, Download, Loader2 } from 'lucide-react';
 import api from '../services/api';
@@ -30,31 +30,53 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
   const [stats, setStats] = useState<DashboardStats | null>(null);
   const [hotDocs, setHotDocs] = useState<Document[]>([]);
   const [rankings, setRankings] = useState<UserRanking[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [hotDocsLoading, setHotDocsLoading] = useState(true);
+  const [rankingsLoading, setRankingsLoading] = useState(true);
 
-  const fetchDashboardData = React.useCallback(async () => {
-    // We only show loading on initial fetch
+  const fetchStats = async () => {
     try {
-      const [statsRes, hotDocsRes, rankingsRes] = await Promise.all([
-        api.get('/Dashboard/stats'),
-        api.get('/Dashboard/hot-documents'),
-        api.get('/Dashboard/rankings')
-      ]);
-
-      setStats(statsRes.data);
-      setHotDocs(hotDocsRes.data);
-      setRankings(rankingsRes.data);
+      const response = await api.get('/Dashboard/stats');
+      setStats(response.data);
     } catch (error) {
-      console.error('Failed to fetch dashboard data:', error);
+      console.error('Failed to fetch dashboard stats:', error);
     } finally {
-      setLoading(false);
+      setStatsLoading(false);
     }
-  }, []);
+  };
+
+  const fetchHotDocs = async () => {
+    try {
+      const response = await api.get('/Dashboard/hot-documents');
+      setHotDocs(response.data);
+    } catch (error) {
+      console.error('Failed to fetch hot documents:', error);
+    } finally {
+      setHotDocsLoading(false);
+    }
+  };
+
+  const fetchRankings = async () => {
+    try {
+      const response = await api.get('/Dashboard/rankings');
+      setRankings(response.data);
+    } catch (error) {
+      console.error('Failed to fetch rankings:', error);
+    } finally {
+      setRankingsLoading(false);
+    }
+  };
+
+  const refreshDashboardData = async () => {
+    await Promise.allSettled([fetchStats(), fetchHotDocs(), fetchRankings()]);
+  };
 
   useEffect(() => {
-    setLoading(true);
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    void fetchStats();
+    window.requestAnimationFrame(() => {
+      void Promise.allSettled([fetchHotDocs(), fetchRankings()]);
+    });
+  }, []);
 
   // Realtime subscription for Dashboard stats
   useEffect(() => {
@@ -63,7 +85,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
     const debouncedFetch = () => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
-        fetchDashboardData();
+        void refreshDashboardData();
       }, 500);
     };
 
@@ -74,7 +96,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
         console.log('[Dashboard] Starting polling fallback...');
         pollingInterval = setInterval(() => {
           console.log('[Dashboard] Polling for updates...');
-          fetchDashboardData();
+          void refreshDashboardData();
         }, 30000);
       }
     };
@@ -114,7 +136,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
         clearInterval(pollingInterval);
       }
     };
-  }, [fetchDashboardData]);
+  }, []);
 
   const statsList = [
     { label: 'Tài liệu', value: stats?.totalDocuments ?? '...', icon: <FileText className="text-teal-600" />, color: 'bg-teal-50' },
@@ -156,7 +178,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
             <div className="group-hover:text-teal-600 transition-colors duration-300">
               <p className="text-slate-500 text-sm font-medium">{stat.label}</p>
               <h3 className="text-2xl font-bold text-slate-800 group-hover:text-teal-600 transition-colors duration-300">
-                {loading ? <div className="h-8 w-16 bg-slate-100 animate-pulse rounded"></div> : stat.value}
+                {statsLoading ? <div className="h-8 w-16 bg-slate-100 animate-pulse rounded"></div> : stat.value}
               </h3>
             </div>
             <div className={`p-3 rounded-xl ${stat.color} group-hover:scale-110 transition-transform duration-300`}>{stat.icon}</div>
@@ -177,7 +199,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
           </div>
 
           <div className="space-y-4">
-            {loading ? (
+            {hotDocsLoading ? (
               [1, 2, 3].map(i => (
                 <div key={i} className="bg-white p-4 rounded-2xl border border-slate-100 animate-pulse flex items-center gap-4">
                   <div className="w-12 h-12 bg-slate-100 rounded-xl"></div>
@@ -214,7 +236,7 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
         <div className="space-y-6">
           <h2 className="text-xl font-bold text-slate-800">Bảng xếp hạng đóng góp</h2>
           <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-            {loading ? (
+            {rankingsLoading ? (
               <div className="p-8 flex flex-col items-center justify-center text-slate-400">
                 <Loader2 className="animate-spin mb-2" />
                 <span className="text-sm">Đang tải xếp hạng...</span>

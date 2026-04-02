@@ -14,7 +14,6 @@ public class AiService : IAiService
     private readonly HttpClient _httpClient;
     private readonly ILogger<AiService> _logger;
 
-    // Cache for AI settings
     private static string? _cachedApiKey;
     private static string? _cachedModel;
     private static DateTime _cacheExpiry = DateTime.MinValue;
@@ -50,14 +49,13 @@ public class AiService : IAiService
             _cachedModel = modelResult?.KeyValue ?? "gemini-3-flash";
             _cacheExpiry = DateTime.UtcNow.Add(CacheDuration);
 
-            _logger.LogInformation("[AI] Loaded AI settings from database. Model: {Model}", _cachedModel);
-
+            _logger.LogInformation("[AI] Loaded AI settings from database.");
             return (_cachedApiKey, _cachedModel);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "[AI] Failed to load AI settings from database");
-            throw new Exception("AI configuration not found. Please contact administrator.");
+            throw new Exception("Không tìm thấy cấu hình AI. Vui lòng liên hệ quản trị viên.");
         }
     }
 
@@ -65,11 +63,10 @@ public class AiService : IAiService
     {
         try
         {
-            var result = await _supabaseClient
+            return await _supabaseClient
                 .From<UserAiUsage>()
                 .Where(u => u.UserId == userId)
                 .Single();
-            return result;
         }
         catch
         {
@@ -84,7 +81,7 @@ public class AiService : IAiService
             var usage = await GetUserAiUsageAsync(userId);
             if (usage == null)
             {
-                var newUsage = new UserAiUsage
+                await _supabaseClient.From<UserAiUsage>().Insert(new UserAiUsage
                 {
                     Id = Guid.NewGuid(),
                     UserId = userId,
@@ -93,8 +90,7 @@ public class AiService : IAiService
                     IsUnlocked = false,
                     CreatedAt = DateTime.UtcNow,
                     UpdatedAt = DateTime.UtcNow
-                };
-                await _supabaseClient.From<UserAiUsage>().Insert(newUsage);
+                });
             }
             else
             {
@@ -114,9 +110,8 @@ public class AiService : IAiService
         try
         {
             var usage = await GetUserAiUsageAsync(userId);
-            if (usage != null && !string.IsNullOrEmpty(usage.ApiKey))
+            if (usage != null && !string.IsNullOrWhiteSpace(usage.ApiKey))
             {
-                _logger.LogInformation("[AI] Using per-user API key for user {UserId}", userId);
                 return usage.ApiKey!;
             }
         }
@@ -136,36 +131,27 @@ public class AiService : IAiService
             Guid? userGuid = null;
             if (!string.IsNullOrEmpty(userId))
             {
-                try { userGuid = Guid.Parse(userId); } catch { }
+                try
+                {
+                    userGuid = Guid.Parse(userId);
+                }
+                catch
+                {
+                    // ignore invalid user id
+                }
             }
 
-            // ===== Limit check =====
             if (userGuid.HasValue)
             {
                 var usage = await GetUserAiUsageAsync(userGuid.Value);
                 var hasDedicatedApi = usage != null && !string.IsNullOrWhiteSpace(usage.ApiKey);
-                bool canUse = false;
-                if (usage == null)
-                {
-                    canUse = true;
-                }
-                else if (hasDedicatedApi)
-                {
-                    // Per-user API key: không áp dụng giới hạn tin nhắn miễn phí
-                    canUse = true;
-                }
-                else if (usage.IsUnlocked)
-                {
-                    canUse = true;
-                }
-                else if (usage.MessagesUsed < usage.MessageLimit)
-                {
-                    canUse = true;
-                }
+                var canUse = usage == null ||
+                             hasDedicatedApi ||
+                             usage.IsUnlocked ||
+                             usage.MessagesUsed < usage.MessageLimit;
 
                 if (!canUse)
                 {
-                    _logger.LogWarning("[AI] User {UserId} exceeded AI message limit", userId);
                     return new ChatResponse
                     {
                         Success = false,
@@ -174,32 +160,35 @@ public class AiService : IAiService
                     };
                 }
 
-                // Chỉ tăng bộ đếm gói miễn phí khi user không dùng API key riêng
                 if (!request.IsSystemPrompt && !hasDedicatedApi)
                 {
                     await IncrementUsageAsync(userGuid.Value);
                 }
             }
 
-            // ===== Get API key =====
             var apiKey = _cachedApiKey;
             if (userGuid.HasValue)
             {
                 apiKey = await GetEffectiveApiKeyAsync(userGuid.Value);
             }
+
             if (string.IsNullOrEmpty(apiKey))
             {
                 var (globalKey, _) = await GetAiSettingsAsync();
                 apiKey = globalKey;
             }
+
             var apiUrl = "http://127.0.0.1:8045/v1/chat/completions";
-
-            _logger.LogInformation("[AI] Starting chat request. Message length: {Length}", request.Message?.Length ?? 0);
-
-            var systemPrompt = @"Bạn là một trợ lý AI thông minh của HueSTD, chuyên trả lời câu hỏi về tài liệu học tập.
-Hãy trả lời ngắn gọn, chính xác và hữu ích dựa trên nội dung tài liệu được cung cấp.
-Nếu không tìm thấy thông tin trong tài liệu, hãy tìm nó ở ngoài trình duyệt.
-Trả lời bằng tiếng Việt, sử dụng markdown để định dạng.";
+            var systemPrompt = """
+Bạn là trợ lý HueSTD.
+Không bao giờ nói về nguồn gốc công nghệ, model, hãng AI, nhà phát triển hay dữ liệu hệ thống nội bộ.
+Không tìm kiếm trên internet và không trả lời các vấn đề ngoài phạm vi HueSTD.
+Chỉ sử dụng ngữ cảnh mà backend HueSTD cung cấp.
+Không tiết lộ dữ liệu cá nhân hoặc dữ liệu nhạy cảm của bất kỳ người dùng nào.
+Nếu thông tin nhạy cảm bị hỏi tới, hãy yêu cầu người dùng liên hệ Admin HueSTD.
+Không được nhận là có quyền chỉnh sửa dữ liệu. Bạn chỉ có quyền đọc.
+Luôn trả lời bằng tiếng Việt có dấu, ngắn gọn, rõ ràng, và trình bày đẹp bằng markdown.
+""";
 
             var messages = new List<object>
             {
@@ -208,7 +197,7 @@ Trả lời bằng tiếng Việt, sử dụng markdown để định dạng.";
 
             if (!string.IsNullOrEmpty(request.Context))
             {
-                messages.Add(new { role = "system", content = $"Ngữ cảnh tài liệu:\n{request.Context}" });
+                messages.Add(new { role = "system", content = $"Ngữ cảnh HueSTD:\n{request.Context}" });
             }
 
             messages.Add(new { role = "user", content = request.Message });
@@ -216,10 +205,10 @@ Trả lời bằng tiếng Việt, sử dụng markdown để định dạng.";
             var (_, model) = await GetAiSettingsAsync();
             var requestBody = new
             {
-                model = model,
-                messages = messages,
-                temperature = 0.7,
-                max_tokens = 2000
+                model,
+                messages,
+                temperature = 0.2,
+                max_tokens = 1600
             };
 
             var jsonContent = JsonSerializer.Serialize(requestBody);
@@ -228,10 +217,7 @@ Trả lời bằng tiếng Việt, sử dụng markdown để định dạng.";
             _httpClient.DefaultRequestHeaders.Clear();
             _httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
 
-            _logger.LogInformation("[AI] Sending request to {Url}", apiUrl);
-
             var response = await _httpClient.PostAsync(apiUrl, content);
-
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
@@ -239,13 +225,11 @@ Trả lời bằng tiếng Việt, sử dụng markdown để định dạng.";
                 return new ChatResponse
                 {
                     Success = false,
-                    Error = $"API Error: {response.StatusCode}"
+                    Error = $"AI API lỗi: {response.StatusCode}"
                 };
             }
 
             var responseBody = await response.Content.ReadAsStringAsync();
-            _logger.LogInformation("[AI] Response received. Length: {Length}", responseBody.Length);
-
             using var doc = JsonDocument.Parse(responseBody);
             var root = doc.RootElement;
 
@@ -258,7 +242,7 @@ Trả lời bằng tiếng Việt, sử dụng markdown để định dạng.";
                     return new ChatResponse
                     {
                         Success = true,
-                        Content = contentProp.GetString() ?? ""
+                        Content = contentProp.GetString() ?? string.Empty
                     };
                 }
             }
@@ -266,7 +250,7 @@ Trả lời bằng tiếng Việt, sử dụng markdown để định dạng.";
             return new ChatResponse
             {
                 Success = false,
-                Error = "Invalid response format"
+                Error = "Định dạng phản hồi AI không hợp lệ."
             };
         }
         catch (Exception ex)

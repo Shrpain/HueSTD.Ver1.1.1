@@ -37,6 +37,7 @@ import AdminLayout from './components/admin/AdminLayout';
 import ProfileModule from './components/ProfileModule';
 import NotificationModule from './components/NotificationModule';
 import AuthModule from './components/AuthModule';
+import AssistantChatBox from './components/AssistantChatBox';
 
 const GlobalNotificationListener: React.FC = () => {
   const { user } = useAuth();
@@ -260,6 +261,8 @@ const AppContent: React.FC = () => {
           &copy; 2026 HueSTD - Nền tảng sinh viên Thừa Thiên Huế
         </footer>
       </div>
+
+      <AssistantChatBox />
     </div>
   );
 };

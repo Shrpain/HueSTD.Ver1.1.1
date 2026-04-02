@@ -4,7 +4,7 @@ import api from '../../services/api';
 
 interface NewChatModalProps {
   onClose: () => void;
-  onSelect: (userId: string) => void;
+  onSelect: (user: UserSearchResult) => void;
 }
 
 interface UserSearchResult {
@@ -19,6 +19,9 @@ const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onSelect }) => {
   const [results, setResults] = useState<UserSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+
+  const getFallbackAvatar = (user: UserSearchResult) =>
+    `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || user.email || 'U')}&background=0d9488&color=fff&size=100`;
 
   const handleSearch = async () => {
     if (!search.trim()) return;
@@ -41,7 +44,7 @@ const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onSelect }) => {
   };
 
   const handleSelect = (user: UserSearchResult) => {
-    onSelect(user.id);
+    onSelect(user);
   };
 
   return (
@@ -108,8 +111,11 @@ const NewChatModal: React.FC<NewChatModalProps> = ({ onClose, onSelect }) => {
                   className="w-full flex items-center gap-3 p-3 hover:bg-slate-50 rounded-xl transition-colors"
                 >
                   <img
-                    src={user.avatarUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.fullName || 'U')}&background=0d9488&color=fff&size=100`}
+                    src={user.avatarUrl || getFallbackAvatar(user)}
                     alt={user.fullName || ''}
+                    onError={(event) => {
+                      event.currentTarget.src = getFallbackAvatar(user);
+                    }}
                     className="w-12 h-12 rounded-full object-cover"
                   />
                   <div className="flex-1 min-w-0 text-left">
