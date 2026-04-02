@@ -16,9 +16,8 @@ const AuthModule: React.FC<AuthModuleProps> = ({ onClose, onLoginSuccess }) => {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
-  const { login, refreshUser } = useAuth();
+  const { login } = useAuth();
 
-  // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [fullName, setFullName] = useState('');
@@ -37,27 +36,20 @@ const AuthModule: React.FC<AuthModuleProps> = ({ onClose, onLoginSuccess }) => {
         setSuccess('Đăng nhập thành công! Đang chuyển hướng...');
         setTimeout(() => onLoginSuccess(), 1000);
       } else {
-        const response = await api.post('/Auth/register', {
+        await api.post('/Auth/register', {
           email,
           password,
           fullName,
           school,
         });
-        login(response.data.accessToken, response.data.refreshToken, response.data.user);
-        
-        // Refresh to get full profile data (e.g. from DB triggers)
-        try {
-          await refreshUser();
-        } catch (e) {
-          console.warn('Refresh failed', e);
-        }
 
-        setSuccess('Đăng ký thành công! Chào mừng bạn đến với HueSTD!');
-        setTimeout(() => onLoginSuccess(), 1500);
+        setSuccess('Đăng ký thành công! Hãy kiểm tra email để xác nhận tài khoản, sau đó quay lại đăng nhập.');
+        setMode('login');
+        setPassword('');
       }
     } catch (err: any) {
       console.error(err);
-      setError(err.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại.');
+      setError(err.response?.data?.message || err.response?.data?.detail || 'Có lỗi xảy ra, vui lòng thử lại.');
     } finally {
       setLoading(false);
     }
@@ -72,11 +64,13 @@ const AuthModule: React.FC<AuthModuleProps> = ({ onClose, onLoginSuccess }) => {
         provider: 'google',
         options: { redirectTo },
       });
+
       if (oauthError) {
         setError(oauthError.message || 'Đăng nhập Google thất bại.');
         setLoading(false);
         return;
       }
+
       if (data?.url) {
         window.location.href = data.url;
         return;
@@ -182,6 +176,7 @@ const AuthModule: React.FC<AuthModuleProps> = ({ onClose, onLoginSuccess }) => {
                 className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-3.5 pl-12 pr-4 text-sm focus:ring-2 focus:ring-teal-500 transition-all outline-none placeholder:text-slate-400"
               />
             </div>
+
             {mode === 'register' && (
               <p className="text-[10px] text-slate-400 font-medium px-2">
                 * Mật khẩu tối thiểu 8 ký tự, bao gồm chữ hoa, chữ thường và chữ số.

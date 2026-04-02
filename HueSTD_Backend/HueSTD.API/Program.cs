@@ -1,117 +1,70 @@
+using HueSTD.API.Configuration;
+using HueSTD.API.Hubs;
 using HueSTD.Application;
-using HueSTD.Application.Interfaces;
-using HueSTD.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
+using HueSTD.Infrastructure;
 
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
 builder.Services.AddControllers();
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = context =>
+    {
+        var detail = context.ProblemDetails.Detail ?? context.ProblemDetails.Title ?? "Request failed.";
+        context.ProblemDetails.Extensions["message"] = detail;
+        context.ProblemDetails.Extensions["error"] = detail;
+        context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+    };
+});
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var validationProblem = new ValidationProblemDetails(context.ModelState)
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Validation Failed",
+            Detail = "One or more validation errors occurred."
+        };
+
+        validationProblem.Extensions["message"] = validationProblem.Detail;
+        validationProblem.Extensions["error"] = validationProblem.Detail;
+        validationProblem.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
+
+        return new BadRequestObjectResult(validationProblem);
+    };
+});
+builder.Services.AddSupabaseAuthentication(builder.Configuration);
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddHttpClient();
+builder.Services.AddSignalR();
 
-// Clean Architecture Dependencies
+// Clean Architecture dependencies
 builder.Services.AddApplication();
 builder.Services.AddInfrastructure(builder.Configuration);
-
-// Context: Enable CORS for Frontend (Vite defaults to port 5173)
-builder.Services.AddCors(options =>
-{
-    options.AddPolicy("AllowFrontend",
-        policy =>
-        {
-            // CORS Configuration - Read from appsettings.json with environment variable fallback
-            var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<List<string>>() ?? new List<string>();
-
-            // Add environment variable support for CORS (comma-separated list)
-            var envOrigins = Environment.GetEnvironmentVariable("ALLOWED_ORIGINS");
-            if (!string.IsNullOrEmpty(envOrigins))
-            {
-                var envOriginList = envOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries);
-                allowedOrigins.AddRange(envOriginList);
-            }
-
-            // Also allow localhost for development (always add common ports)
-            allowedOrigins.Add("http://localhost:3000");
-            allowedOrigins.Add("http://localhost:5173");
-            allowedOrigins.Add("https://localhost:3000");
-            allowedOrigins.Add("https://localhost:5173");
-
-            policy.SetIsOriginAllowed(origin =>
-            {
-                // Check if origin is in allowed list
-                if (allowedOrigins.Any(allowed => origin.Equals(allowed, StringComparison.OrdinalIgnoreCase)))
-                    return true;
-
-                // For development: allow localhost with any port
-                if (origin.StartsWith("http://localhost:", StringComparison.OrdinalIgnoreCase) ||
-                    origin.StartsWith("https://localhost:", StringComparison.OrdinalIgnoreCase))
-                    return true;
-
-                // For production: strict check for specific domains (no wildcards)
-                if (origin.Contains(".vercel.app") || origin.Contains("vercel.app"))
-                {
-                    // Only allow specific production domains - ADD YOUR DOMAIN HERE
-                    string[] allowedProductionDomains = {
-                        "huestd-frontend.vercel.app"
-                    };
-                    return allowedProductionDomains.Any(domain => origin.Contains(domain, StringComparison.OrdinalIgnoreCase));
-                }
-
-                return false;
-            })
-            .AllowAnyHeader()
-            .AllowAnyMethod();
-        });
-});
+builder.Services.AddFrontendCors(builder.Configuration);
 
 var app = builder.Build();
 
-// Pre-initialize Supabase Client
-using (var scope = app.Services.CreateScope())
-{
-    var supabaseClient = scope.ServiceProvider.GetRequiredService<Supabase.Client>();
-    try {
-        await supabaseClient.InitializeAsync();
-        Console.WriteLine("✅ Supabase Client Initialized Successfully");
-    } catch (Exception ex) {
-        Console.WriteLine($"❌ Failed to initialize Supabase Client: {ex.Message}");
-    }
-}
+await app.WarmUpSupabaseAsync();
 
 // Configure the HTTP request pipeline.
-// Exception handler phải đứng TRƯỚC MapControllers để bắt lỗi từ API.
-app.UseExceptionHandler(errorApp =>
-{
-    errorApp.Run(async context =>
-    {
-        context.Response.StatusCode = 500;
-        context.Response.ContentType = "application/json";
-
-        var exceptionHandlerPathFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerPathFeature>();
-        var exception = exceptionHandlerPathFeature?.Error;
-
-        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
-        logger.LogError(exception, "Unhandled exception occurred");
-
-        await context.Response.WriteAsJsonAsync(new
-        {
-            message = "An error occurred while processing your request.",
-            detail = app.Environment.IsDevelopment() ? exception?.Message : null,
-            stack = app.Environment.IsDevelopment() ? exception?.StackTrace : null
-        });
-    });
-});
+app.UseExceptionHandler();
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
-//app.UseHttpsRedirection();
+// app.UseHttpsRedirection();
 
-app.UseCors("AllowFrontend");
+app.UseCors(CorsConfigurationExtensions.AllowFrontendPolicy);
 
+app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<AssistantHub>("/hubs/assistant");
 
 app.Run();

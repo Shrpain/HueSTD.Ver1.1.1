@@ -1,5 +1,6 @@
 using HueSTD.Application.Interfaces;
 using HueSTD.Infrastructure.Services;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Supabase;
@@ -15,6 +16,7 @@ public static class DependencyInjection
         var supabaseKey = configuration["Supabase:Key"] ?? Environment.GetEnvironmentVariable("SUPABASE_KEY");
         var supabaseAnonKey = configuration["Supabase:AnonKey"] ?? Environment.GetEnvironmentVariable("SUPABASE_ANON_KEY");
         var supabaseServiceRoleKey = configuration["Supabase:ServiceRoleKey"] ?? Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY");
+        var assistantDocumentsReadKey = configuration["Supabase:AssistantDocumentsReadKey"] ?? Environment.GetEnvironmentVariable("SUPABASE_ASSISTANT_DOCUMENTS_READ_KEY");
 
         static bool IsPlaceholder(string? v) =>
             string.IsNullOrWhiteSpace(v) ||
@@ -52,11 +54,26 @@ public static class DependencyInjection
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IProfileService, ProfileService>();
         services.AddScoped<IDocumentService, DocumentService>();
+        services.AddScoped<IDocumentReadGateway>(provider =>
+        {
+            var logger = provider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<DocumentReadGateway>>();
+            var readClient = new Client(
+                supabaseUrl,
+                string.IsNullOrWhiteSpace(assistantDocumentsReadKey) ? clientKey : assistantDocumentsReadKey,
+                new SupabaseOptions
+                {
+                    AutoRefreshToken = true,
+                    AutoConnectRealtime = false
+                });
+            return new DocumentReadGateway(readClient, logger);
+        });
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IChatService, ChatService>();
+        services.AddScoped<IAssistantRealtimeService, AssistantRealtimeService>();
         services.AddHttpClient<IAiService, AiService>();
+        services.AddTransient<IClaimsTransformation, SupabaseProfileClaimsTransformation>();
         
         // Add Realtime Monitor Background Service
         services.AddHostedService<RealtimeMonitorService>();

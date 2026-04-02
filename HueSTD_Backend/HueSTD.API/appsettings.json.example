@@ -4,6 +4,7 @@
 # Supabase Configuration
 Supabase__Url=https://oubkbvypiabgfulnhsnd.supabase.co
 Supabase__Key=your_supabase_service_role_key_here
+Supabase__JwtSecret=your_supabase_jwt_secret_here
 
 # AI Service Configuration (Optional - can be managed via Admin Panel)
 AI__ApiUrl=http://127.0.0.1:8045/v1/chat/completions

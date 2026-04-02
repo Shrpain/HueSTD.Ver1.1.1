@@ -42,13 +42,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { showToast } = useToast();
     const [user, setUser] = useState<User | null>(null);
 
-    const persistUser = useCallback((nextUser: User, token: string, refreshToken: string) => {
+    const syncTokens = useCallback((token: string, refreshToken: string) => {
         localStorage.setItem('accessToken', token);
         localStorage.setItem('refreshToken', refreshToken);
-        localStorage.setItem('user', JSON.stringify(nextUser));
-        setUser(nextUser);
         void syncSupabaseRealtimeAuth(token);
     }, []);
+
+    const persistUser = useCallback((nextUser: User, token: string, refreshToken: string) => {
+        syncTokens(token, refreshToken);
+        localStorage.setItem('user', JSON.stringify(nextUser));
+        setUser(nextUser);
+    }, [syncTokens]);
 
     const clearAuthStorage = useCallback(() => {
         localStorage.removeItem('accessToken');
@@ -65,6 +69,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [persistUser]);
 
     const refreshUser = useCallback(async () => {
+        const token = localStorage.getItem('accessToken');
+        if (!token) {
+            return;
+        }
+
         try {
             const response = await api.get('/Profile/me');
             if (response.data) {
@@ -93,21 +102,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     useEffect(() => {
         const token = localStorage.getItem('accessToken');
         const savedUser = localStorage.getItem('user');
+        const refreshToken = localStorage.getItem('refreshToken') ?? '';
 
         if (token && savedUser) {
-            try {
-                setUser(JSON.parse(savedUser));
-                const refreshToken = localStorage.getItem('refreshToken') ?? '';
-                void supabase.auth.setSession({
-                    access_token: token,
-                    refresh_token: refreshToken,
-                }).catch(() => {});
-                void syncSupabaseRealtimeAuth(token);
-                void refreshUser();
-            } catch (error) {
-                console.error('Failed to parse saved user:', error);
-                clearAuthStorage();
-            }
+            void hydrateUserFromSession(token, refreshToken)
+                .then(() => {
+                    void supabase.auth.setSession({
+                        access_token: token,
+                        refresh_token: refreshToken,
+                    }).catch(() => {});
+                })
+                .catch((error) => {
+                    console.error('Stored session is invalid:', error);
+                    clearAuthStorage();
+                    setUser(null);
+                    void syncSupabaseRealtimeAuth(null);
+                    supabase.auth.signOut().catch(() => {});
+                });
             return;
         }
 
@@ -149,6 +160,46 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [clearAuthStorage, hydrateUserFromSession, refreshUser]);
 
     useEffect(() => {
+        const {
+            data: { subscription },
+        } = supabase.auth.onAuthStateChange((event, session) => {
+            if (event === 'TOKEN_REFRESHED' && session?.access_token) {
+                syncTokens(session.access_token, session.refresh_token ?? '');
+                return;
+            }
+
+            if (event === 'SIGNED_IN' && session?.access_token && user) {
+                persistUser(user, session.access_token, session.refresh_token ?? '');
+                return;
+            }
+
+            if (event === 'SIGNED_OUT') {
+                clearAuthStorage();
+                setUser(null);
+                void syncSupabaseRealtimeAuth(null);
+            }
+        });
+
+        return () => {
+            subscription.unsubscribe();
+        };
+    }, [clearAuthStorage, persistUser, syncTokens, user]);
+
+    useEffect(() => {
+        const handleExpiredSession = () => {
+            clearAuthStorage();
+            setUser(null);
+            void syncSupabaseRealtimeAuth(null);
+            supabase.auth.signOut().catch(() => {});
+        };
+
+        window.addEventListener('auth-session-expired', handleExpiredSession);
+        return () => {
+            window.removeEventListener('auth-session-expired', handleExpiredSession);
+        };
+    }, [clearAuthStorage]);
+
+    useEffect(() => {
         if (!user?.id) return;
 
         const channel = supabase
@@ -182,6 +233,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [user?.id]);
 
     const login = (token: string, refreshToken: string, newUser: User) => {
+        if (!token) {
+            console.warn('[Auth] login called without access token; skipping session persistence');
+            return;
+        }
+
         persistUser(newUser, token, refreshToken);
         void supabase.auth.setSession({ access_token: token, refresh_token: refreshToken }).then(({ error }) => {
             if (error) {

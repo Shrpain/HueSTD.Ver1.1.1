@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace HueSTD.Application.DTOs.Chat;
 
 public record ConversationDto(
@@ -27,13 +29,17 @@ public record ConversationMemberDto(
 );
 
 public record CreateConversationRequest(
+    [Required, StringLength(20)]
     string Type,
+    [StringLength(200)]
     string? Name,
     List<Guid>? MemberIds
 );
 
 public record UpdateConversationRequest(
+    [StringLength(200)]
     string? Name,
+    [Url]
     string? AvatarUrl,
     bool? IsArchived,
     bool? IsMuted,

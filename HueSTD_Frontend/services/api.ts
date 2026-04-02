@@ -32,6 +32,34 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const status = error?.response?.status;
+    const message = error?.response?.data?.message || error?.response?.data?.error || '';
+    const hadStoredToken = !!localStorage.getItem('accessToken');
+    const authHeader = error?.config?.headers?.Authorization || error?.config?.headers?.authorization;
+    const requestHadBearerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ');
+
+    if ((status === 401 && hadStoredToken && requestHadBearerToken) ||
+        (status === 403 && hadStoredToken && String(message).toLowerCase().includes('jwt'))) {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('user');
+      window.dispatchEvent(new CustomEvent('auth-toast', {
+        detail: {
+          type: 'error',
+          title: 'Phiên đăng nhập đã hết hạn',
+          message: 'Vui lòng đăng nhập lại để tiếp tục.',
+        },
+      }));
+      window.dispatchEvent(new Event('auth-session-expired'));
+    }
+
+    return Promise.reject(error);
+  }
+);
+
 // ===== Notification API =====
 export const broadcastNotification = async (title: string, message: string, type: string = 'system') => {
   const response = await api.post('/Notification/broadcast', { title, message, type });

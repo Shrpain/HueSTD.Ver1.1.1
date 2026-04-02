@@ -1,9 +1,17 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace HueSTD.Application.DTOs.AI;
 
 public class ChatRequest
 {
+    [Required]
+    [StringLength(4000)]
     public required string Message { get; set; }
+
+    [Required]
+    [StringLength(12000)]
     public required string Context { get; set; }
+
     public bool IsSystemPrompt { get; set; } = false;
     public string? UserId { get; set; }
 }
@@ -18,7 +26,10 @@ public class ChatResponse
 
 public class UpdateAISettingsRequest
 {
+    [StringLength(500)]
     public string? ApiKey { get; set; }
+
+    [StringLength(100)]
     public string? Model { get; set; }
 }
 
@@ -41,18 +52,24 @@ public class UserAiUsageDto
 
 public class UpdateUserAiUsageRequest
 {
+    [Range(0, 100000)]
     public int? MessageLimit { get; set; }
+
+    [StringLength(500)]
     public string? ApiKey { get; set; }
+
     public bool? IsUnlocked { get; set; }
 }
 
 public class ResetUserAiUsageRequest
 {
+    [Range(0, 100000)]
     public int MessageLimit { get; set; } = 10;
 }
 
 public class CreateUnlockRequestDto
 {
+    [StringLength(2000)]
     public string? Message { get; set; }
 }
 

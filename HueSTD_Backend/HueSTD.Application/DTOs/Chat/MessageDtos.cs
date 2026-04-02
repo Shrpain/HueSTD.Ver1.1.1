@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace HueSTD.Application.DTOs.Chat;
 
 public record MessageDto(
@@ -35,14 +37,18 @@ public record ReactionUserDto(
 );
 
 public record SendMessageRequest(
+    [Required, StringLength(4000)]
     string Content,
+    [StringLength(50)]
     string ContentType = "text",
+    [Url]
     string? FileUrl = null,
+    [StringLength(255)]
     string? FileName = null,
     long? FileSize = null,
     Guid? ReplyToId = null
 );
 
-public record EditMessageRequest(string Content);
+public record EditMessageRequest([Required, StringLength(4000)] string Content);
 
-public record AddReactionRequest(string Reaction);
+public record AddReactionRequest([Required, StringLength(50)] string Reaction);
