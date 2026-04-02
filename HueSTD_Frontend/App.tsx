@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ToastProvider, useToast } from './components/Toast';
@@ -37,7 +37,7 @@ import AdminLayout from './components/admin/AdminLayout';
 import ProfileModule from './components/ProfileModule';
 import NotificationModule from './components/NotificationModule';
 import AuthModule from './components/AuthModule';
-import AssistantChatBox from './components/AssistantChatBox';
+const AssistantChatBox = lazy(() => import('./components/AssistantChatBox'));
 
 const GlobalNotificationListener: React.FC = () => {
   const { user } = useAuth();
@@ -262,7 +262,9 @@ const AppContent: React.FC = () => {
         </footer>
       </div>
 
-      <AssistantChatBox />
+      <Suspense fallback={null}>
+        <AssistantChatBox />
+      </Suspense>
     </div>
   );
 };

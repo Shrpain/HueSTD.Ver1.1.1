@@ -71,7 +71,7 @@ public static class DependencyInjection
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IChatService, ChatService>();
-        services.AddScoped<IAssistantRealtimeService, AssistantRealtimeService>();
+        services.AddScoped<IAssistantRealtimeService, PersistentAssistantRealtimeService>();
         services.AddHttpClient<IAiService, AiService>();
         services.AddTransient<IClaimsTransformation, SupabaseProfileClaimsTransformation>();
         

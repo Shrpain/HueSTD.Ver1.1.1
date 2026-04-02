@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Bot,
   ChevronDown,
@@ -25,8 +25,6 @@ import {
 } from '../services/assistantRealtime';
 import 'katex/dist/katex.min.css';
 
-type PersonaCode = 'default' | 'study' | 'support' | 'technical';
-
 interface PendingQueueItem {
   id: string;
   text: string;
@@ -34,6 +32,9 @@ interface PendingQueueItem {
 }
 
 const DEFAULT_VISIBLE_MESSAGES = 24;
+const MAX_LOCAL_MESSAGES = 60;
+const SESSION_VERSION = 'v3';
+const ASSISTANT_PERSONA = 'default';
 
 const LABELS = {
   title: 'HueSTD Assistant',
@@ -41,7 +42,7 @@ const LABELS = {
   reconnecting: 'Đang kết nối lại...',
   offline: 'Đang ngoại tuyến',
   online: 'Đang trực tuyến',
-  inputPlaceholder: 'Hỏi về tài liệu, chức năng, hoặc thao tác trong HueSTD...',
+  inputPlaceholder: 'Hỏi về tài liệu, chức năng hoặc thao tác trong HueSTD...',
   typing: 'Assistant đang xử lý...',
   searchPlaceholder: 'Tìm trong cuộc trò chuyện...',
   loadOlder: 'Tải thêm tin nhắn cũ',
@@ -49,15 +50,7 @@ const LABELS = {
   offlineQueued: 'Tin nhắn sẽ được gửi khi có mạng trở lại.',
   user: 'Bạn',
   assistant: 'Assistant',
-  persona: 'Vai trò',
 } as const;
-
-const PERSONA_OPTIONS: { value: PersonaCode; label: string }[] = [
-  { value: 'default', label: 'Tổng quát' },
-  { value: 'study', label: 'Học tập' },
-  { value: 'support', label: 'Hỗ trợ' },
-  { value: 'technical', label: 'Kỹ thuật' },
-];
 
 const dedupeMessages = (messages: AssistantChatMessage[]) => {
   const map = new Map<string, AssistantChatMessage>();
@@ -88,11 +81,13 @@ const createLocalAssistantMessage = (
   quickReplies,
 });
 
+const buildStorageKey = (userId: string, suffix: string) => `assistant:${SESSION_VERSION}:${userId}:${suffix}`;
+
 const AssistantChatBox: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
   const location = useLocation();
 
-  const [sessionId] = useState('assistant-primary');
+  const [sessionId] = useState(`assistant-primary-${SESSION_VERSION}`);
   const [isOpen, setIsOpen] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -103,24 +98,53 @@ const AssistantChatBox: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(DEFAULT_VISIBLE_MESSAGES);
   const [quickReplies, setQuickReplies] = useState<string[]>([]);
-  const [persona, setPersona] = useState<PersonaCode>('default');
   const [pendingQueue, setPendingQueue] = useState<PendingQueueItem[]>([]);
   const [notificationPermissionAsked, setNotificationPermissionAsked] = useState(false);
   const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>({});
   const [humanHandoverAvailable, setHumanHandoverAvailable] = useState(false);
+  const [lastError, setLastError] = useState('');
   const hasJoinedSessionRef = useRef(false);
 
   const connectionRef = useRef(createAssistantConnection());
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const isConnectedRef = useRef(false);
-  const personaRef = useRef<PersonaCode>(persona);
   const pendingQueueRef = useRef<PendingQueueItem[]>(pendingQueue);
   const pathnameRef = useRef(location.pathname);
   const userRef = useRef(user);
 
   useEffect(() => {
-    personaRef.current = persona;
-  }, [persona]);
+    if (!user?.id) return;
+
+    try {
+      const savedMessages = localStorage.getItem(buildStorageKey(user.id, 'messages'));
+      const savedQueue = localStorage.getItem(buildStorageKey(user.id, 'pendingQueue'));
+
+      if (savedMessages) {
+        const parsed = JSON.parse(savedMessages) as AssistantChatMessage[];
+        setMessages(dedupeMessages(parsed).slice(-MAX_LOCAL_MESSAGES));
+      }
+
+      if (savedQueue) {
+        setPendingQueue(JSON.parse(savedQueue) as PendingQueueItem[]);
+      }
+    } catch {
+      localStorage.removeItem(buildStorageKey(user.id, 'messages'));
+      localStorage.removeItem(buildStorageKey(user.id, 'pendingQueue'));
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(
+      buildStorageKey(user.id, 'messages'),
+      JSON.stringify(messages.slice(-MAX_LOCAL_MESSAGES))
+    );
+  }, [messages, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    localStorage.setItem(buildStorageKey(user.id, 'pendingQueue'), JSON.stringify(pendingQueue));
+  }, [pendingQueue, user?.id]);
 
   useEffect(() => {
     pendingQueueRef.current = pendingQueue;
@@ -141,7 +165,6 @@ const AssistantChatBox: React.FC = () => {
       setQuickReplies([]);
       setPendingQueue([]);
       setSearchQuery('');
-      setPersona('default');
       setNotificationPermissionAsked(false);
       setFeatureFlags({});
       setHumanHandoverAvailable(false);
@@ -149,6 +172,7 @@ const AssistantChatBox: React.FC = () => {
       setIsTyping(false);
       setIsConnecting(false);
       setIsReconnecting(false);
+      setLastError('');
       hasJoinedSessionRef.current = false;
     }
   }, [user?.id]);
@@ -190,8 +214,6 @@ const AssistantChatBox: React.FC = () => {
     const connection = connectionRef.current;
 
     const handleJoined = (payload: AssistantSessionJoined) => {
-      const nextPersona = (payload.persona as PersonaCode) || 'default';
-      setPersona(nextPersona);
       setFeatureFlags(payload.featureFlags || {});
       setHumanHandoverAvailable(payload.humanHandoverAvailable);
       setQuickReplies(payload.suggestedReplies || []);
@@ -224,6 +246,7 @@ const AssistantChatBox: React.FC = () => {
       setMessages((prev) => dedupeMessages([...prev, payload]));
       setQuickReplies(payload.quickReplies || []);
       setIsTyping(false);
+      setLastError('');
       if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
         new Notification('HueSTD Assistant', { body: truncateText(payload.content, 140) });
       }
@@ -231,10 +254,15 @@ const AssistantChatBox: React.FC = () => {
 
     const handleTypingStarted = () => setIsTyping(true);
     const handleTypingFinished = () => setIsTyping(false);
+    const handleRequestFailed = (payload: { message?: string }) => {
+      setIsTyping(false);
+      setLastError(payload.message || 'Không thể xử lý yêu cầu lúc này.');
+    };
 
     connection.onreconnecting(() => {
       setIsReconnecting(true);
       isConnectedRef.current = false;
+      setLastError('');
     });
 
     connection.onreconnected(() => {
@@ -247,18 +275,21 @@ const AssistantChatBox: React.FC = () => {
     connection.onclose(() => {
       isConnectedRef.current = false;
       setIsTyping(false);
+      setLastError('Kết nối tới assistant đã đóng. Hệ thống sẽ kết nối lại khi cần.');
     });
 
     connection.on('AssistantSessionJoined', handleJoined);
     connection.on('AssistantMessageReceived', handleAssistantMessage);
     connection.on('AssistantTypingStarted', handleTypingStarted);
     connection.on('AssistantTypingFinished', handleTypingFinished);
+    connection.on('AssistantRequestFailed', handleRequestFailed);
 
     return () => {
       connection.off('AssistantSessionJoined', handleJoined);
       connection.off('AssistantMessageReceived', handleAssistantMessage);
       connection.off('AssistantTypingStarted', handleTypingStarted);
       connection.off('AssistantTypingFinished', handleTypingFinished);
+      connection.off('AssistantRequestFailed', handleRequestFailed);
       void connection.stop();
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -279,6 +310,7 @@ const AssistantChatBox: React.FC = () => {
     if (!hasJoinedSessionRef.current) {
       setIsConnecting(true);
     }
+    setLastError('');
 
     const connection = connectionRef.current;
     await assistantRealtime.start(connection);
@@ -287,7 +319,7 @@ const AssistantChatBox: React.FC = () => {
     await assistantRealtime.joinSession(connection, {
       sessionId,
       locale: 'vi-VN',
-      persona: personaRef.current,
+      persona: ASSISTANT_PERSONA,
       pagePath: pathnameRef.current,
       pageTitle: document.title,
       module: getModuleFromPath(),
@@ -322,7 +354,7 @@ const AssistantChatBox: React.FC = () => {
           sessionId,
           message: queued.text,
           locale: 'vi-VN',
-          persona: personaRef.current,
+          persona: ASSISTANT_PERSONA,
           pagePath: pathnameRef.current,
           pageTitle: document.title,
           module: getModuleFromPath(),
@@ -339,7 +371,7 @@ const AssistantChatBox: React.FC = () => {
   useEffect(() => {
     void flushPendingQueue();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOnline, pendingQueue.length, persona]);
+  }, [isOnline, pendingQueue.length]);
 
   const queueOfflineMessage = (text: string) => {
     const queued: PendingQueueItem = {
@@ -356,7 +388,7 @@ const AssistantChatBox: React.FC = () => {
       sessionId,
       message,
       locale: 'vi-VN',
-      persona: personaRef.current,
+      persona: ASSISTANT_PERSONA,
       pagePath: pathnameRef.current,
       pageTitle: document.title,
       module: getModuleFromPath(),
@@ -380,6 +412,7 @@ const AssistantChatBox: React.FC = () => {
     setMessages((prev) => dedupeMessages([...prev, userMessage]));
     setInputValue('');
     setIsTyping(true);
+    setLastError('');
     await requestNotificationsIfNeeded();
 
     if (!isOnline || !isConnectedRef.current) {
@@ -393,6 +426,7 @@ const AssistantChatBox: React.FC = () => {
     } catch (error) {
       console.error('[AssistantChatBox] Failed to send message:', error);
       setIsTyping(false);
+      setLastError(error instanceof Error ? error.message : 'Không thể gửi tin nhắn tới assistant.');
       queueOfflineMessage(message);
     }
   };
@@ -420,7 +454,7 @@ const AssistantChatBox: React.FC = () => {
                   <div className="mt-1 flex items-center gap-2 text-[11px] text-white/85">
                     {isOnline ? <Wifi size={12} /> : <WifiOff size={12} />}
                     <span>{isReconnecting ? LABELS.reconnecting : isOnline ? LABELS.online : LABELS.offline}</span>
-                    <span>·</span>
+                    <span>•</span>
                     <UserRound size={12} />
                     <span className="max-w-[210px] truncate">{user.fullName || user.email}</span>
                   </div>
@@ -433,25 +467,6 @@ const AssistantChatBox: React.FC = () => {
               >
                 <X size={16} />
               </button>
-            </div>
-
-            <div className="mt-2 grid grid-cols-1 gap-2">
-              <label className="flex items-center gap-2 rounded-lg bg-white/10 px-2.5 py-1.5 text-[11px]">
-                <Bot size={12} />
-                <span className="min-w-0 shrink-0">{LABELS.persona}</span>
-                <select
-                  aria-label={LABELS.persona}
-                  value={persona}
-                  onChange={(event) => setPersona(event.target.value as PersonaCode)}
-                  className="min-w-0 flex-1 bg-transparent text-[11px] outline-none"
-                >
-                  {PERSONA_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value} className="text-slate-800">
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
             </div>
           </header>
 
@@ -466,6 +481,16 @@ const AssistantChatBox: React.FC = () => {
                 className="w-full bg-transparent text-xs outline-none"
               />
             </div>
+            {lastError && (
+              <div className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+                {lastError}
+              </div>
+            )}
+            {!!pendingQueue.length && (
+              <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] text-amber-700">
+                Có {pendingQueue.length} tin nhắn đang chờ gửi lại khi kết nối ổn định.
+              </div>
+            )}
           </div>
 
           <div className="h-[320px] sm:h-[360px] overflow-y-auto bg-slate-50 px-3 py-3" role="log" aria-live="polite">
@@ -503,7 +528,7 @@ const AssistantChatBox: React.FC = () => {
                           <div className="mb-1 flex items-center gap-2 text-[11px] opacity-70">
                             {isUser ? <MessageCircle size={12} /> : <Bot size={12} />}
                             <span>{isUser ? LABELS.user : LABELS.assistant}</span>
-                            <span>·</span>
+                            <span>•</span>
                             <span>
                               {new Date(message.timestamp).toLocaleTimeString('vi-VN', {
                                 hour: '2-digit',
@@ -610,3 +635,4 @@ const AssistantChatBox: React.FC = () => {
 };
 
 export default AssistantChatBox;
+

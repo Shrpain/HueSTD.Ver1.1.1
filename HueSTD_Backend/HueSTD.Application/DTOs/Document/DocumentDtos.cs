@@ -22,6 +22,23 @@ public class DocumentDto
     public DateTime CreatedAt { get; set; }
 }
 
+public class DocumentQueryRequest
+{
+    public string? Query { get; set; }
+    public string? School { get; set; }
+    public string? Subject { get; set; }
+    public string? Type { get; set; }
+    public string? Year { get; set; }
+    public string SortBy { get; set; } = "relevance";
+    public int Limit { get; set; } = 5;
+}
+
+public class DocumentQueryResultDto
+{
+    public int TotalCount { get; set; }
+    public List<DocumentDto> Documents { get; set; } = new();
+}
+
 
 public class CreateDocumentRequest
 {

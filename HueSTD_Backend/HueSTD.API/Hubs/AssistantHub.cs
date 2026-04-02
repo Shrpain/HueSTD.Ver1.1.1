@@ -1,3 +1,4 @@
+using HueSTD.API.Auth;
 using HueSTD.Application.DTOs.AI;
 using HueSTD.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
@@ -9,42 +10,56 @@ namespace HueSTD.API.Hubs;
 public class AssistantHub : Hub
 {
     private readonly IAssistantRealtimeService _assistantRealtimeService;
-    private readonly ILogger<AssistantHub> _logger;
 
-    public AssistantHub(IAssistantRealtimeService assistantRealtimeService, ILogger<AssistantHub> logger)
+    public AssistantHub(IAssistantRealtimeService assistantRealtimeService)
     {
         _assistantRealtimeService = assistantRealtimeService;
-        _logger = logger;
     }
 
     public async Task JoinSession(AssistantSessionJoinRequest request)
     {
-        var accessToken = GetAccessToken();
-        var joined = await _assistantRealtimeService.JoinSessionAsync(accessToken, request, Context.ConnectionAborted);
+        var user = Context.User ?? throw new HubException("Phiên đăng nhập không hợp lệ.");
+        var joined = await _assistantRealtimeService.JoinSessionAsync(
+            user.GetRequiredUserIdValue(),
+            user.GetEmail(),
+            user.GetAppRole(),
+            request,
+            Context.ConnectionAborted);
+
         await Groups.AddToGroupAsync(Context.ConnectionId, joined.SessionId, Context.ConnectionAborted);
         await Clients.Caller.SendAsync("AssistantSessionJoined", joined, Context.ConnectionAborted);
     }
 
     public async Task SendUserMessage(AssistantSendMessageRequest request)
     {
-        var accessToken = GetAccessToken();
+        var user = Context.User ?? throw new HubException("Phiên đăng nhập không hợp lệ.");
         await Clients.Caller.SendAsync("AssistantTypingStarted", new { request.SessionId }, Context.ConnectionAborted);
 
-        var assistantMessage = await _assistantRealtimeService.SendMessageAsync(accessToken, request, Context.ConnectionAborted);
-        await Clients.Group(assistantMessage.SessionId).SendAsync("AssistantMessageReceived", assistantMessage, Context.ConnectionAborted);
-        await Clients.Caller.SendAsync("AssistantTypingFinished", new { request.SessionId }, Context.ConnectionAborted);
-    }
-
-    private string GetAccessToken()
-    {
-        var httpContext = Context.GetHttpContext();
-        var accessToken = httpContext?.Request.Query["access_token"].ToString();
-        if (string.IsNullOrWhiteSpace(accessToken))
+        try
         {
-            _logger.LogWarning("[AssistantHub] Missing access_token in SignalR query string.");
-            throw new HubException("Missing access token.");
-        }
+            var assistantMessage = await _assistantRealtimeService.SendMessageAsync(
+                user.GetRequiredUserIdValue(),
+                user.GetEmail(),
+                user.GetAppRole(),
+                request,
+                Context.ConnectionAborted);
 
-        return accessToken;
+            await Clients.Group(assistantMessage.SessionId)
+                .SendAsync("AssistantMessageReceived", assistantMessage, Context.ConnectionAborted);
+        }
+        catch (Exception ex)
+        {
+            await Clients.Caller.SendAsync("AssistantRequestFailed", new
+            {
+                request.SessionId,
+                message = ex.Message
+            }, Context.ConnectionAborted);
+
+            throw new HubException(ex.Message);
+        }
+        finally
+        {
+            await Clients.Caller.SendAsync("AssistantTypingFinished", new { request.SessionId }, Context.ConnectionAborted);
+        }
     }
 }
