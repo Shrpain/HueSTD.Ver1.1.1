@@ -45,14 +45,17 @@ Desktop.ini
 # Agent / AI tool folders
 # =========================
 .agent/
+.claw/
 .claude/
 .qodo/
 .gemini/
+.omx/
 
 # =========================
 # Misc
 # =========================
 *.log
+*.rar
 
 # =========================
 # Scripts with Secrets (NEVER commit)

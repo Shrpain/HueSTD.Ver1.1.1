@@ -125,3 +125,5 @@ Nếu muốn rebuild sạch hơn trước khi chạy backend, dùng thêm:
 dotnet clean
 dotnet build
 
+
+gemini-3-flash-agent
