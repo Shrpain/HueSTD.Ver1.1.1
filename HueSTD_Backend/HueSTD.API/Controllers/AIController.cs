@@ -11,14 +11,14 @@ namespace HueSTD.API.Controllers;
 [Authorize]
 [ApiController]
 [Route("api/[controller]")]
-public class AI : ApiControllerBase
+public class AiController : ApiControllerBase
 {
     private readonly IAiService _aiService;
     private readonly IAdminService _adminService;
     private readonly IAuthService _authService;
-    private readonly ILogger<AI> _logger;
+    private readonly ILogger<AiController> _logger;
 
-    public AI(IAiService aiService, IAdminService adminService, IAuthService authService, ILogger<AI> logger)
+    public AiController(IAiService aiService, IAdminService adminService, IAuthService authService, ILogger<AiController> logger)
     {
         _aiService = aiService;
         _adminService = adminService;
@@ -45,6 +45,20 @@ public class AI : ApiControllerBase
         }
 
         return Ok(new { success = true, content = result.Content });
+    }
+
+    [HttpPost("generate-exam")]
+    public async Task<IActionResult> GenerateExam([FromBody] GenerateExamRequest request)
+    {
+        _logger.LogInformation("[AI Controller] Generate exam request received. QuestionCount: {Count}", request.QuestionCount);
+
+        var result = await _aiService.GenerateExamAsync(request, CurrentUserIdValue);
+        if (result == null)
+        {
+            throw new InvalidOperationException("AI không thể tạo đề thi hoặc định dạng kết quả không hợp lệ.");
+        }
+
+        return Ok(result);
     }
 
     [Authorize(Policy = AppPolicies.ModeratorOrAdmin)]

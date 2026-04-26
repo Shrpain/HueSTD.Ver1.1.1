@@ -114,8 +114,8 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
             if (extractedText) {
                 setIsTyping(true);
                 try {
-                    const systemPrompt = getSystemPrompt(extractedText);
-                    const response = await chatWithDocument(systemPrompt, extractedText, true);
+                    const initialPrompt = "Hãy chào tôi và tóm tắt ngắn gọn nội dung tài liệu này.";
+                    const response = await chatWithDocument(initialPrompt, extractedText, true);
                     if (mounted) {
                         setMessages([{ id: 'welcome', role: 'assistant', content: response, timestamp: new Date() }]);
                         setIsAiReady(true);
@@ -203,10 +203,10 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
     const isDisabled = (!hasDedicatedApi && isLimitExceeded) || !isAiReady || notAuthenticated;
 
     return (
-        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }} className="bg-slate-50">
+        <div style={{ height: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }} className="bg-slate-50 dark:bg-slate-950 transition-colors duration-300">
             {/* Chưa đăng nhập — yêu cầu đăng nhập */}
             {notAuthenticated && (
-                <div className="mx-4 mt-3 bg-slate-100 border border-slate-300 rounded-xl p-3 flex items-start gap-3 text-slate-700 text-sm">
+                <div className="mx-4 mt-3 bg-slate-100 dark:bg-slate-900 border border-slate-300 dark:border-slate-800 rounded-xl p-3 flex items-start gap-3 text-slate-700 dark:text-slate-300 text-sm">
                     <Lock size={16} className="mt-0.5 shrink-0 text-slate-500" />
                     <div>
                         <p className="font-semibold">Bạn chưa đăng nhập</p>
@@ -251,11 +251,11 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${msg.role === 'user' ? 'bg-indigo-100 text-indigo-600' : 'bg-gradient-to-br from-violet-500 to-fuchsia-500 text-white shadow-md'}`}>
                                 {msg.role === 'user' ? <User size={16} /> : <Bot size={16} />}
                             </div>
-                            <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white text-slate-700 border rounded-bl-none'}`}>
+                            <div className={`max-w-[80%] rounded-2xl px-4 py-3 text-sm shadow-sm ${msg.role === 'user' ? 'bg-indigo-600 text-white rounded-br-none' : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border dark:border-slate-800 rounded-bl-none'}`}>
                                 {msg.role === 'user' ? (
                                     <span className="whitespace-pre-wrap">{msg.content}</span>
                                 ) : (
-                                    <div className="prose prose-sm prose-slate max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h1]:font-bold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-sm [&_.katex]:text-[0.95em] [&_strong]:font-semibold [&_code]:bg-slate-100 [&_code]:px-1 [&_code]:rounded">
+                                    <div className="prose prose-sm prose-slate dark:prose-invert max-w-none [&_p]:my-1.5 [&_ul]:my-2 [&_ol]:my-2 [&_li]:my-0.5 [&_h1]:text-base [&_h1]:font-bold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-sm [&_.katex]:text-[0.95em] [&_strong]:font-semibold [&_code]:bg-slate-100 dark:[&_code]:bg-slate-800 [&_code]:px-1 [&_code]:rounded">
                                         <ReactMarkdown remarkPlugins={[remarkMath]} rehypePlugins={[rehypeKatex]}>
                                             {msg.content}
                                         </ReactMarkdown>
@@ -324,8 +324,8 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
             )}
 
             {/* Input Area */}
-            <div style={{ flexShrink: 0 }} className="p-3 bg-white border-t">
-                <form onSubmit={handleSendMessage} className="flex items-end gap-2 bg-slate-100 border border-slate-200 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-violet-500/50">
+            <div style={{ flexShrink: 0 }} className="p-3 bg-white dark:bg-slate-900 border-t dark:border-slate-800 transition-colors">
+                <form onSubmit={handleSendMessage} className="flex items-end gap-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-2 focus-within:ring-2 focus-within:ring-violet-500/50">
                     <textarea
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
@@ -344,7 +344,7 @@ const AIChatPanel: React.FC<AIChatPanelProps> = ({ documentTitle, extractedText,
                                         ? "AI đang đọc tài liệu..."
                                         : "Hỏi gì đó về tài liệu này..."
                         }
-                        className="flex-1 bg-transparent border-0 focus:ring-0 p-2 text-sm text-slate-700 resize-none max-h-24 min-h-[40px] outline-none disabled:cursor-not-allowed"
+                        className="flex-1 bg-transparent border-0 focus:ring-0 p-2 text-sm text-slate-700 dark:text-slate-200 resize-none max-h-24 min-h-[40px] outline-none disabled:cursor-not-allowed"
                         rows={1}
                         disabled={isDisabled}
                     />

@@ -2,6 +2,7 @@ export enum AppTab {
   DASHBOARD = 'dashboard',
   DOCUMENTS = 'documents',
   CHAT = 'chat',
+  ONLINE_EXAM = 'online-exam',
   ADMIN = 'admin',
   PROFILE = 'profile',
   NOTIFICATIONS = 'notifications'

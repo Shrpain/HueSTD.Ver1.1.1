@@ -5,6 +5,7 @@ using HueSTD.Application.Interfaces;
 using HueSTD.Domain.Entities;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 using Supabase;
 
 namespace HueSTD.API.Controllers;
@@ -17,17 +18,20 @@ public class DocumentsController : ApiControllerBase
     private readonly IConfiguration _configuration;
     private readonly INotificationService _notificationService;
     private readonly Client _supabaseClient;
+    private readonly HueSTD.Application.Interfaces.IFileUploadService _fileUploadService;
 
     public DocumentsController(
         IDocumentService documentService,
         IConfiguration configuration,
         INotificationService notificationService,
-        Client supabaseClient)
+        Client supabaseClient,
+        HueSTD.Application.Interfaces.IFileUploadService fileUploadService)
     {
         _documentService = documentService;
         _configuration = configuration;
         _notificationService = notificationService;
         _supabaseClient = supabaseClient;
+        _fileUploadService = fileUploadService;
     }
 
     [HttpGet]
@@ -85,45 +89,18 @@ public class DocumentsController : ApiControllerBase
             throw new BadRequestException("No file provided.");
         }
 
-        var allowedExtensions = new[] { ".pdf", ".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx", ".txt", ".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg", ".zip", ".rar" };
-        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (!allowedExtensions.Contains(ext))
+        using var stream = file.OpenReadStream();
+
+        try
         {
-            throw new BadRequestException("File type not allowed. Allowed: images, PDF, DOC, DOCX, PPT, PPTX, XLS, XLSX, TXT, ZIP, RAR.");
+            // Use injected FileUploadService to handle storage securely, including magic bytes validation
+            var (publicUrl, storedFileName) = await _fileUploadService.UploadAsync(stream, file.FileName, CurrentUserIdValue);
+            return Ok(new { fileUrl = publicUrl, fileName = file.FileName });
         }
-
-        if (file.Length > 50 * 1024 * 1024)
+        catch (InvalidOperationException ex)
         {
-            throw new BadRequestException("File size exceeds 50MB limit.");
+            throw new BadRequestException(ex.Message);
         }
-
-        var supabaseUrl = _configuration["Supabase:Url"] ?? Environment.GetEnvironmentVariable("SUPABASE_URL");
-        var supabaseKey = _configuration["Supabase:ServiceRoleKey"] ?? _configuration["Supabase:Key"] ?? Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY") ?? Environment.GetEnvironmentVariable("SUPABASE_KEY");
-
-        var fileName = $"{Guid.NewGuid()}{ext}";
-        var filePath = $"documents/{CurrentUserIdValue}/{fileName}";
-
-        using var memoryStream = new MemoryStream();
-        await file.CopyToAsync(memoryStream);
-        var fileBytes = memoryStream.ToArray();
-
-        using var httpClient = new HttpClient();
-        httpClient.DefaultRequestHeaders.Add("Authorization", $"Bearer {supabaseKey}");
-        httpClient.DefaultRequestHeaders.Add("apikey", supabaseKey);
-
-        var content = new ByteArrayContent(fileBytes);
-        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(file.ContentType ?? "application/octet-stream");
-
-        var uploadUrl = $"{supabaseUrl}/storage/v1/object/documents/{filePath}";
-        var response = await httpClient.PostAsync(uploadUrl, content);
-        if (!response.IsSuccessStatusCode)
-        {
-            var errorContent = await response.Content.ReadAsStringAsync();
-            throw new InvalidOperationException($"Failed to upload file to storage. {errorContent}");
-        }
-
-        var publicUrl = $"{supabaseUrl}/storage/v1/object/public/documents/{filePath}";
-        return Ok(new { fileUrl = publicUrl, fileName = file.FileName });
     }
 
     [HttpGet("{id}/comments")]

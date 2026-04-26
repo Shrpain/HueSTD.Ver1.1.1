@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using System.Text;
 using HueSTD.API.Auth;
+using HueSTD.Application.Interfaces;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
@@ -51,6 +52,34 @@ public static class SupabaseAuthenticationExtensions
 
                 options.Events = new JwtBearerEvents
                 {
+                    OnTokenValidated = async context =>
+                    {
+                        // Extract user ID from the validated token
+                        var userIdClaim = context.Principal?.FindFirst("sub")?.Value;
+                        if (string.IsNullOrEmpty(userIdClaim)) return;
+
+                        try
+                        {
+                            // Get AuthService to fetch the actual role from database
+                            var authService = context.HttpContext.RequestServices.GetRequiredService<IAuthService>();
+                            var user = await authService.GetCurrentUserAsync(userIdClaim);
+
+                            if (user != null && !string.IsNullOrEmpty(user.Role))
+                            {
+                                var appIdentity = new ClaimsIdentity();
+                                appIdentity.AddClaim(new System.Security.Claims.Claim(ClaimTypes.Role, user.Role));
+
+                                // Add additional claims if needed
+                                appIdentity.AddClaim(new System.Security.Claims.Claim("app_role", user.Role));
+
+                                context.Principal?.AddIdentity(appIdentity);
+                            }
+                        }
+                        catch (Exception)
+                        {
+                            // If we can't fetch role, just continue with standard authenticated role
+                        }
+                    },
                     OnMessageReceived = context =>
                     {
                         var accessToken = context.Request.Query["access_token"];

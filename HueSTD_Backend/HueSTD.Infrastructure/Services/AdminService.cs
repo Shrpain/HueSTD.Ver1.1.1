@@ -1,5 +1,6 @@
 using HueSTD.Application.DTOs.Admin;
 using HueSTD.Application.DTOs.AI;
+using HueSTD.Application.Exceptions;
 using HueSTD.Application.Interfaces;
 using HueSTD.Domain.Entities;
 using Microsoft.Extensions.Configuration;
@@ -24,6 +25,20 @@ public class AdminService : IAdminService
         _logger = logger;
     }
 
+    private string GetSupabaseAdminKey()
+    {
+        var serviceRoleKey = _configuration["Supabase:ServiceRoleKey"] ?? Environment.GetEnvironmentVariable("SUPABASE_SERVICE_ROLE_KEY");
+        var legacyKey = _configuration["Supabase:Key"] ?? Environment.GetEnvironmentVariable("SUPABASE_KEY");
+        var adminKey = !string.IsNullOrWhiteSpace(serviceRoleKey) ? serviceRoleKey : legacyKey;
+
+        if (string.IsNullOrWhiteSpace(adminKey))
+        {
+            throw new BadRequestException("Thiếu Supabase service role key cho chức năng quản trị.");
+        }
+
+        return adminKey;
+    }
+
     public async Task<AdminStatsDto> GetDashboardStatsAsync()
     {
         var stats = new AdminStatsDto();
@@ -40,11 +55,12 @@ public class AdminService : IAdminService
             var docsResult = await _supabaseClient
                 .From<Document>()
                 .Get();
-            stats.TotalDocuments = docsResult.Models.Count;
+            var docsList = docsResult?.Models ?? new List<Document>();
+            stats.TotalDocuments = docsList.Count;
 
             // Total Views and Downloads
-            stats.TotalViews = docsResult.Models.Any() ? docsResult.Models.Sum(d => d.Views) : 0;
-            stats.TotalDownloads = docsResult.Models.Any() ? docsResult.Models.Sum(d => d.Downloads) : 0;
+            stats.TotalViews = docsList.Any() ? docsList.Sum(d => d.Views) : 0;
+            stats.TotalDownloads = docsList.Any() ? docsList.Sum(d => d.Downloads) : 0;
 
             // Reports Count - Currently not used
             stats.ReportsCount = 0;
@@ -193,10 +209,10 @@ public class AdminService : IAdminService
     {
         // Use Supabase Admin API to create user
         var supabaseUrl = _configuration["Supabase:Url"] ?? Environment.GetEnvironmentVariable("SUPABASE_URL");
-        var supabaseKey = _configuration["Supabase:Key"] ?? Environment.GetEnvironmentVariable("SUPABASE_KEY");
+        var supabaseKey = GetSupabaseAdminKey();
 
-        if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabaseKey))
-            throw new Exception("Supabase configuration missing.");
+        if (string.IsNullOrWhiteSpace(supabaseUrl))
+            throw new BadRequestException("Thiếu Supabase URL cho chức năng quản trị.");
 
         var adminUrl = $"{supabaseUrl}/auth/v1/admin/users";
 
@@ -219,7 +235,8 @@ public class AdminService : IAdminService
         if (!response.IsSuccessStatusCode)
         {
             var errorBody = await response.Content.ReadAsStringAsync();
-            throw new Exception($"Failed to create user: {response.StatusCode} - {errorBody}");
+            _logger.LogError("[AdminService] Failed to create auth user. Status: {StatusCode}. Body: {Body}", response.StatusCode, errorBody);
+            throw new BadRequestException($"Không thể tạo người dùng trên Supabase Auth: {response.StatusCode}.");
         }
 
         var responseBody = await response.Content.ReadAsStringAsync();
@@ -371,12 +388,11 @@ public class AdminService : IAdminService
 
             // 3. Delete from Supabase Auth using Admin API
             var supabaseUrl = _configuration["Supabase:Url"] ?? Environment.GetEnvironmentVariable("SUPABASE_URL");
-            var supabaseKey = _configuration["Supabase:Key"] ?? Environment.GetEnvironmentVariable("SUPABASE_KEY");
+            var supabaseKey = GetSupabaseAdminKey();
 
-            if (string.IsNullOrEmpty(supabaseUrl) || string.IsNullOrEmpty(supabaseKey))
+            if (string.IsNullOrWhiteSpace(supabaseUrl))
             {
-                _logger.LogWarning("[AdminService] Supabase configuration missing. Auth deletion skipped for user {Id}", id);
-                // DB records are already deleted, user cannot login anymore
+                _logger.LogWarning("[AdminService] Supabase URL missing. Auth deletion skipped for user {Id}", id);
                 return true;
             }
 

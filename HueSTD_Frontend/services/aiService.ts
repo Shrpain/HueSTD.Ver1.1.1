@@ -17,6 +17,14 @@ export interface ChatMessage {
     timestamp: Date;
 }
 
+export interface ExtractedSourcePayload {
+    extractedText: string;
+    extractor: string;
+    ocrUsed: boolean;
+    pageCount: number;
+    metadataJson?: string;
+}
+
 /**
  * Extracts text from a PDF url.
  * Uses pdfjs-dist for standard text and Tesseract.js for OCR if needed.
@@ -101,6 +109,55 @@ export const extractTextFromPdf = async (url: string, onProgress?: (status: stri
     }
 };
 
+const IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp'];
+const TEXT_EXTENSIONS = ['.txt', '.md', '.csv', '.json'];
+
+export const extractTextFromSource = async (
+    url: string,
+    onProgress?: (status: string) => void
+): Promise<ExtractedSourcePayload> => {
+    const normalizedUrl = url.split('?')[0].split('#')[0];
+    const safeUrl = normalizedUrl.toLowerCase();
+
+    if (safeUrl.endsWith('.pdf')) {
+        const extractedText = await extractTextFromPdf(url, onProgress);
+        return {
+            extractedText,
+            extractor: 'frontend-pdfjs+tesseract',
+            ocrUsed: extractedText.includes('(OCR)'),
+            pageCount: (extractedText.match(/--- Trang/g) || []).length,
+            metadataJson: JSON.stringify({ type: 'pdf' })
+        };
+    }
+
+    if (IMAGE_EXTENSIONS.some((extension) => safeUrl.endsWith(extension))) {
+        if (onProgress) onProgress('Đang OCR hình ảnh...');
+        const { data: { text } } = await Tesseract.recognize(url, 'vie+eng');
+        return {
+            extractedText: text,
+            extractor: 'frontend-tesseract-image',
+            ocrUsed: true,
+            pageCount: 1,
+            metadataJson: JSON.stringify({ type: 'image' })
+        };
+    }
+
+    if (TEXT_EXTENSIONS.some((extension) => safeUrl.endsWith(extension))) {
+        if (onProgress) onProgress('Đang đọc file văn bản...');
+        const response = await fetch(url);
+        const extractedText = await response.text();
+        return {
+            extractedText,
+            extractor: 'frontend-fetch-text',
+            ocrUsed: false,
+            pageCount: 1,
+            metadataJson: JSON.stringify({ type: 'text' })
+        };
+    }
+
+    throw new Error('Định dạng nguồn này chưa hỗ trợ OCR/scan tự động. Hiện chỉ hỗ trợ PDF, ảnh và file văn bản.');
+};
+
 /**
  * Generate system prompt for reading document
  */
@@ -127,8 +184,8 @@ export const chatWithDocument = async (
 
         const token = localStorage.getItem('accessToken');
 
-        console.log('[AI] Sending POST to /AI/chat...');
-        const response = await apiInstance.post('/AI/chat', {
+        console.log('[AI] Sending POST to /Ai/chat...');
+        const response = await apiInstance.post('/Ai/chat', {
             message,
             context,
             isSystemPrompt
@@ -189,8 +246,28 @@ export const getMyAiUsage = async (): Promise<MyAiUsage> => {
     if (!token) {
         throw Object.assign(new Error('not_authenticated'), { status: 401 });
     }
-    const response = await api.get('/AI/my-usage', {
+    const response = await api.get('/Ai/my-usage', {
         headers: { Authorization: `Bearer ${token}` }
     });
     return response.data;
+};
+
+/**
+ * Generate exam questions from text content using AI
+ */
+export const generateExamFromAI = async (content: string, questionCount: number): Promise<any> => {
+    try {
+        const { default: api } = await import('./api');
+        const token = localStorage.getItem('accessToken');
+        const response = await api.post('/Ai/generate-exam', {
+            content,
+            questionCount
+        }, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        return response.data;
+    } catch (error: any) {
+        console.error('[AI] Generate exam failed:', error);
+        throw new Error(error.response?.data?.error || error.message || 'Không thể tạo đề thi bằng AI. Vui lòng thử lại.');
+    }
 };

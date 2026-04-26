@@ -71,9 +71,11 @@ public static class DependencyInjection
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<INotificationService, NotificationService>();
         services.AddScoped<IChatService, ChatService>();
+        services.AddScoped<IExamService, ExamService>();
         services.AddScoped<IAssistantRealtimeService, PersistentAssistantRealtimeService>();
         services.AddHttpClient<IAiService, AiService>();
-        services.AddTransient<IClaimsTransformation, SupabaseProfileClaimsTransformation>();
+        services.AddHttpClient<IFileUploadService, FileUploadService>();
+        services.AddMemoryCache(); // Add memory cache for AI service
         
         // Add Realtime Monitor Background Service
         services.AddHostedService<RealtimeMonitorService>();

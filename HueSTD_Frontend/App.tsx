@@ -1,6 +1,7 @@
 import React, { Suspense, lazy, useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { ThemeProvider, useTheme } from './context/ThemeContext';
 import { ToastProvider, useToast } from './components/Toast';
 import { supabase } from './services/supabase';
 import api from './services/api';
@@ -11,6 +12,7 @@ const PATH_TO_TAB: Record<string, AppTab> = {
   '/dashboard': AppTab.DASHBOARD,
   '/documents': AppTab.DOCUMENTS,
   '/chat': AppTab.CHAT,
+  '/online-exam': AppTab.ONLINE_EXAM,
   '/notifications': AppTab.NOTIFICATIONS,
   '/profile': AppTab.PROFILE,
   '/admin': AppTab.ADMIN,
@@ -19,6 +21,7 @@ const TAB_TO_PATH: Record<AppTab, string> = {
   [AppTab.DASHBOARD]: '/',
   [AppTab.DOCUMENTS]: '/documents',
   [AppTab.CHAT]: '/chat',
+  [AppTab.ONLINE_EXAM]: '/online-exam',
   [AppTab.NOTIFICATIONS]: '/notifications',
   [AppTab.PROFILE]: '/profile',
   [AppTab.ADMIN]: '/admin',
@@ -37,6 +40,7 @@ import AdminLayout from './components/admin/AdminLayout';
 import ProfileModule from './components/ProfileModule';
 import NotificationModule from './components/NotificationModule';
 import AuthModule from './components/AuthModule';
+import OnlineExamModule from './components/OnlineExamModule';
 const AssistantChatBox = lazy(() => import('./components/AssistantChatBox'));
 
 const GlobalNotificationListener: React.FC = () => {
@@ -124,6 +128,7 @@ const mapAuthUserToUser = (authUser: any): User | null => {
 
 const AppContent: React.FC = () => {
   const { user: authUser, isAuthenticated, logout } = useAuth();
+  const { theme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
   const activeTab = pathnameToTab(location.pathname);
@@ -188,6 +193,23 @@ const AppContent: React.FC = () => {
           </button>
         </div>
       );
+      case AppTab.ONLINE_EXAM: return isAuthenticated ? <OnlineExamModule /> : (
+        <div className="flex flex-col items-center justify-center min-h-[60vh] text-center space-y-6">
+          <div className="w-20 h-20 bg-teal-50 rounded-full flex items-center justify-center text-teal-600">
+            <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 8a2 2 0 0 1 2-2h12l6 6v8a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2z" /><path d="M6 14h12" /><path d="M8 10h4" /></svg>
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-slate-800">Thi online</h2>
+            <p className="text-slate-500 max-w-sm mx-auto font-medium">Vui lòng đăng nhập để tạo đề thi thủ công và quản lý ngân hàng câu hỏi.</p>
+          </div>
+          <button
+            onClick={() => setShowAuthModal(true)}
+            className="bg-teal-600 text-white px-8 py-3 rounded-2xl font-black shadow-xl shadow-teal-100 hover:bg-teal-700 transition-all active:scale-95"
+          >
+            Đăng nhập ngay
+          </button>
+        </div>
+      );
       case AppTab.NOTIFICATIONS: return <NotificationModule />;
       case AppTab.ADMIN: return <AdminModule initialTab="support" />;
       case AppTab.PROFILE: return user ? <ProfileModule user={user} /> : null;
@@ -221,7 +243,7 @@ const AppContent: React.FC = () => {
   }
 
   return (
-    <div className={`flex bg-slate-50 ${activeTab === AppTab.CHAT ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
+    <div className={`flex bg-slate-50 dark:bg-slate-950 transition-colors duration-300 ${activeTab === AppTab.CHAT ? 'h-screen overflow-hidden' : 'min-h-screen'}`}>
       {showAuthModal && (
         <AuthModule
           onClose={() => setShowAuthModal(false)}
@@ -250,14 +272,14 @@ const AppContent: React.FC = () => {
           onNotificationClick={() => handleTabChange(AppTab.NOTIFICATIONS)}
         />
         <main
-          className={`flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full ${
+          className={`flex-1 p-4 md:p-6 max-w-7xl mx-auto w-full transition-colors duration-300 ${
             activeTab === AppTab.CHAT ? 'overflow-hidden min-h-0 flex' : 'overflow-y-auto'
           }`}
         >
           {renderContent()}
         </main>
 
-        <footer className="shrink-0 p-4 text-center text-slate-400 text-sm border-t bg-white">
+        <footer className="shrink-0 p-4 text-center text-slate-400 text-sm border-t dark:border-slate-800 bg-white dark:bg-slate-900 transition-colors duration-300">
           &copy; 2026 HueSTD - Nền tảng sinh viên Thừa Thiên Huế
         </footer>
       </div>
@@ -274,13 +296,15 @@ import { Analytics } from '@vercel/analytics/react';
 const App: React.FC = () => {
   return (
     <ToastProvider>
-      <AuthProvider>
-        <AuthToastListener>
-          <GlobalNotificationListener />
-          <AppContent />
-          <Analytics />
-        </AuthToastListener>
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <AuthToastListener>
+            <GlobalNotificationListener />
+            <AppContent />
+            <Analytics />
+          </AuthToastListener>
+        </AuthProvider>
+      </ThemeProvider>
     </ToastProvider>
   );
 };

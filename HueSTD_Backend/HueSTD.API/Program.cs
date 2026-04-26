@@ -1,20 +1,33 @@
+using System.Globalization;
 using HueSTD.API.Configuration;
 using HueSTD.API.Hubs;
 using HueSTD.Application;
 using Microsoft.AspNetCore.Mvc;
 using HueSTD.Infrastructure;
 
+// Force InvariantCulture to prevent decimal parsing errors in non-US locales
+CultureInfo.DefaultThreadCurrentCulture = CultureInfo.InvariantCulture;
+CultureInfo.DefaultThreadCurrentUICulture = CultureInfo.InvariantCulture;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Add services to the container.
-builder.Services.AddControllers();
+builder.Services.AddControllers()
+    .AddJsonOptions(options =>
+    {
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        options.JsonSerializerOptions.DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull;
+    });
 builder.Services.AddProblemDetails(options =>
 {
+    // Always return a generic error message to avoid leaking internal details or secrets.
     options.CustomizeProblemDetails = context =>
     {
-        var detail = context.ProblemDetails.Detail ?? context.ProblemDetails.Title ?? "Request failed.";
-        context.ProblemDetails.Extensions["message"] = detail;
-        context.ProblemDetails.Extensions["error"] = detail;
+        var genericMessage = "Request failed.";
+        context.ProblemDetails.Title = genericMessage;
+        context.ProblemDetails.Detail = genericMessage;
+        context.ProblemDetails.Extensions["message"] = genericMessage;
+        context.ProblemDetails.Extensions["error"] = genericMessage;
         context.ProblemDetails.Extensions["traceId"] = context.HttpContext.TraceIdentifier;
     };
 });

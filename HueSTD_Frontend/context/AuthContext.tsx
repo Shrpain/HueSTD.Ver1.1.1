@@ -168,8 +168,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 return;
             }
 
-            if (event === 'SIGNED_IN' && session?.access_token && user) {
-                persistUser(user, session.access_token, session.refresh_token ?? '');
+            if (event === 'SIGNED_IN' && session?.access_token) {
+                syncTokens(session.access_token, session.refresh_token ?? '');
+
+                if (user) {
+                    persistUser(user, session.access_token, session.refresh_token ?? '');
+                    return;
+                }
+
+                void hydrateUserFromSession(session.access_token, session.refresh_token ?? '').catch((error) => {
+                    console.error('[AuthContext] Failed to hydrate user after SIGNED_IN:', error);
+                    clearAuthStorage();
+                    setUser(null);
+                    void syncSupabaseRealtimeAuth(null);
+                });
                 return;
             }
 
@@ -183,7 +195,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return () => {
             subscription.unsubscribe();
         };
-    }, [clearAuthStorage, persistUser, syncTokens, user]);
+    }, [clearAuthStorage, hydrateUserFromSession, persistUser, syncTokens, user]);
 
     useEffect(() => {
         const handleExpiredSession = () => {

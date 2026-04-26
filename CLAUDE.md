@@ -2,128 +2,90 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Read First
-
-Before making assumptions about product scope or project progress, read `PROJECT_CONTEXT.md` in the repo root first. It is the short project memory file for this codebase.
-
-## Project Overview
-
-HueSTD is a full-stack application with:
-- **Frontend**: React 19 + TypeScript + Vite (HueSTD_Frontend/)
-- **Backend**: .NET 9 Web API (HueSTD_Backend/)
-- **Database/Storage**: Supabase (PostgreSQL + Storage + Realtime)
-- **Deployment**: Vercel (frontend), dedicated server (backend)
-
 ## Commands
 
 ### Frontend (HueSTD_Frontend/)
 ```bash
-npm install          # Install dependencies
-npm run dev          # Start development server (port 3000)
-npm run build        # Build production assets
-npm run preview      # Preview built assets
-npm run test         # Run all tests
-npm run test -- --filter "Document upload"  # Run specific test
-npm run lint         # Check code quality
-npm run lint:fix     # Auto-fix lint issues
+npm ci          # Fast reinstall of dependencies
+npm run dev     # Start dev server (http://localhost:3000)
+npm run build   # Build production assets
+npm run preview # Preview built assets
+npm run test    # Run all tests
+npm run test -- --filter "<pattern>"   # Run a specific test
+npm run lint    # Lint code
+npm run lint:fix # Auto-fix lint issues
 ```
 
 ### Backend (HueSTD_Backend/HueSTD.API/)
-```bash
-dotnet run                    # Start API (port 5136)
-dotnet build                  # Build project
-dotnet test                   # Run all tests
-dotnet test --filter "Name=DocumentUploadTests"  # Run specific test
+```powershell
+dotnet build                     # Build project
+dotnet run                       # Start API (http://localhost:5136)
+dotnet test                        # Run all tests
+dotnet test --filter "Name=DocumentUploadTests"  # Run a specific test
+dotnet clean                       # Clean bin/obj folders
 ```
 
-## Architecture
+## Architecture (high‑level)
 
-### Backend
-- **Clean Architecture** with layers:
-  - *Presentation*: API controllers and middleware (HueSTD.API/)
-  - *Application*: Business logic and DTOs (HueSTD.Application/)
-  - *Domain*: Core entities and interfaces (HueSTD.Domain/)
-  - *Infrastructure*: Data access and external services (HueSTD.Infrastructure/)
+- **Backend**: Clean Architecture layers
+  - *Presentation*: API controllers & middleware (`HueSTD.API/Controllers/`)
+  - *Application*: Business logic & DTOs (`HueSTD.Application/DTOs/`, `HueSTD.Application/Services/`)
+  - *Domain*: Core entities & interfaces (`HueSTD.Domain/Entities/`, `Interfaces/`)
+  - *Infrastructure*: Data access, external services, config (`HueSTD.Infrastructure/...`)
 
-### Frontend
-- Modular structure with feature-based components (DocumentModule, AdminModule, etc.)
-- Authentication via Supabase OAuth with JWT token management
-- API requests proxied through Vite dev server to backend
-- State managed via React Context (AuthContext)
+- **Frontend**: Feature‑based modules in `HueSTD_Frontend/components/`.  
+  - Authentication via Supabase OAuth (JWT).  
+  - API calls proxied through Vite to backend.  
+  - Global state via React Context (`AuthContext`).
+
+- **Database / Auth / Realtime**: Supabase (PostgreSQL + Storage + Realtime).  
+  - Backend uses the **Service Role key** for uploads and bypassing RLS when needed.  
+  - Document approval flow: `draft` → `pending` → `approved` → `published`. Only `approved` docs become publicly accessible.
 
 ## Environment Variables
 
-### Frontend
+### Frontend (`.env.local`)
 ```
 VITE_SUPABASE_URL=...
 VITE_SUPABASE_ANON_KEY=...
 VITE_API_BASE_URL=/api
 ```
 
-### Backend
-```
-Supabase:Url=...
-Supabase:Key=...
-Supabase:AnonKey=...
-Supabase:ServiceRoleKey=...
-AllowedOrigins=http://localhost:3000,...
+### Backend (`appsettings.Development.json` / env)
+```json
+{
+  "Supabase": {
+    "Url": "...",
+    "Key": "...",
+    "AnonKey": "...",
+    "ServiceRoleKey": "...",
+    "AllowedOrigins": "http://localhost:3000,https://prod.example.com"
+  }
+}
 ```
 
 ## Important Patterns
 
-- **File Upload**: Backend uses Supabase Service Role key to bypass RLS
-- **Document Approval**: Admins must approve documents before public visibility
-- **Realtime Updates**: Supabase Realtime channels for profile changes
-- **CORS Configuration**: Backend allows origins from appsettings
+- **File Upload**: Backend streams file to Supabase Storage using the Service Role key; front‑end obtains a pre‑signed URL for final upload.
+- **Document Approval**: Documents transition `draft` → `pending` → `approved` → `published`. Only `approved` docs are publicly visible.
+- **Realtime Updates**: Supabase Realtime channels (`profile`, `documents`) push updates to connected clients.
+- **CORS**: Configurable via `CorsConfigurationExtensions`; matches allowed origins from config.
 
 ## Supabase MCP Server
 
-**MCP Server**: `user-Supabase` (enabled at `C:\Users\Administrator\.cursor\projects\c-khoaLuan\mcps\user-Supabase`)
+- **Location**: `C:\Users\Administrator\.cursor\projects\c-khoaLuan\mcps\user-Supabase`
+- **Use**: Only for schema migrations, extension management, or when backend lacks support.  
+  Available tools: `execute_sql`, `apply_migration`, `list_migrations`, `list_tables`, `search_docs`, `get_logs`, `deploy_edge_function`, `generate_typescript_types`.
 
-**Khi cần thao tác với Database**: Luôn dùng MCP Supabase, KHÔNG cần tạo file SQL hay script migration thủ công.
+## Update Log (recommended)
 
-Tuy nhiên, **KHÔNG dùng MCP cho các tác vụ thông thường** (đọc data, insert, update — những thứ backend đã làm qua Supabase client). MCP chỉ dùng khi backend chưa hỗ trợ và cần tạo bảng/column mới.
+Add a short markdown section at the bottom of this file whenever you make structural or configuration changes, e.g.:
 
-### Các tool MCP có sẵn
-- `execute_sql` — Chạy SQL thuần trong Postgres (DDL, DML)
-- `apply_migration` — Áp dụng migration mới
-- `list_migrations` — Xem danh sách migration
-- `list_tables` — Liệt kê các bảng
-- `list_extensions` — Liệt kê extensions
-- `search_docs` — Tìm tài liệu Supabase
-- `get_logs` — Xem logs của edge functions
-- `deploy_edge_function` — Deploy Supabase Edge Functions
-- `get_publishable_keys` / `get_project_url` — Lấy config
-- `generate_typescript_types` — Generate types từ schema
-- Git operations: `create_branch`, `list_branches`, `merge_branch`, etc.
+```markdown
+## Update log
 
+- 2026-03-24: Refactored CORS setup into separate file, added Supabase warm‑up extension.
+- 2026-03-25: Added Document approval workflow, introduced AI chat module.
+```
 
-
-
-
-
-Đã kill xong frontend và backend.
-
-Chạy trong terminal như sau.
-
-Backend:
-
-cd C:\khoaLuan\HueSTD_Backend\HueSTD.API
-dotnet build
-dotnet run
-Frontend:
-
-cd C:\khoaLuan\HueSTD_Frontend
-npm run build
-npm run dev
-URL sau khi chạy:
-
-Backend: http://localhost:5136/swagger
-Frontend: http://localhost:3000
-Nếu muốn rebuild sạch hơn trước khi chạy backend, dùng thêm:
-
-dotnet clean
-dotnet build
-
-
-gemini-3-flash-agent
+Do **not** add generic development advice or list every file. Keep the file concise and focused on commands, architecture, and key patterns that aid a new Claude instance in getting productive quickly.
