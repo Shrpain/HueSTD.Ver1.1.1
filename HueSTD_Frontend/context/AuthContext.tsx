@@ -17,7 +17,6 @@ export interface User {
     role?: string;
     totalDocuments?: number;
     totalDownloads?: number;
-    averageRating?: number;
 }
 
 export interface UpdateProfileData {
@@ -34,6 +33,7 @@ interface AuthContextType {
     updateUser: (data: UpdateProfileData) => Promise<boolean>;
     refreshUser: () => Promise<void>;
     isAuthenticated: boolean;
+    isHydrating: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -41,43 +41,34 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     const { showToast } = useToast();
     const [user, setUser] = useState<User | null>(null);
+    const [isHydrating, setIsHydrating] = useState(true);
 
-    const syncTokens = useCallback((token: string, refreshToken: string) => {
-        localStorage.setItem('accessToken', token);
-        localStorage.setItem('refreshToken', refreshToken);
-        void syncSupabaseRealtimeAuth(token);
+    const hydrateUserFromCookie = useCallback(async () => {
+        try {
+            const response = await api.get('/Auth/me');
+            const nextUser = response.data as User & { accessToken?: string; AccessToken?: string };
+            const token = nextUser.accessToken || nextUser.AccessToken;
+
+            if (token) {
+                void syncSupabaseRealtimeAuth(token);
+                void supabase.auth.setSession({ access_token: token, refresh_token: '' }).catch(() => {});
+            }
+
+            setUser(nextUser);
+            return nextUser as User;
+        } catch {
+            setUser(null);
+            void syncSupabaseRealtimeAuth(null);
+            return null;
+        } finally {
+            setIsHydrating(false);
+        }
     }, []);
-
-    const persistUser = useCallback((nextUser: User, token: string, refreshToken: string) => {
-        syncTokens(token, refreshToken);
-        localStorage.setItem('user', JSON.stringify(nextUser));
-        setUser(nextUser);
-    }, [syncTokens]);
-
-    const clearAuthStorage = useCallback(() => {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        localStorage.removeItem('user');
-    }, []);
-
-    const hydrateUserFromSession = useCallback(async (token: string, refreshToken: string) => {
-        const response = await api.get('/Auth/me', {
-            headers: { Authorization: `Bearer ${token}` },
-        });
-        persistUser(response.data, token, refreshToken);
-        return response.data as User;
-    }, [persistUser]);
 
     const refreshUser = useCallback(async () => {
-        const token = localStorage.getItem('accessToken');
-        if (!token) {
-            return;
-        }
-
         try {
             const response = await api.get('/Profile/me');
             if (response.data) {
-                localStorage.setItem('user', JSON.stringify(response.data));
                 setUser(response.data);
             }
         } catch (error) {
@@ -87,119 +78,57 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const logout = useCallback(() => {
         const oldUser = user;
-        clearAuthStorage();
+        setIsHydrating(false);
         setUser(null);
         void syncSupabaseRealtimeAuth(null);
-        supabase.auth.signOut().catch(() => {});
-        showToast({
-            type: 'info',
-            title: 'Hen gap lai',
-            message: `Tam biet ${oldUser?.fullName || 'ban'}!`,
-            duration: 3000,
+
+        // Standard POST to the absolute path just to be safe
+        api.post('/Auth/logout').finally(() => {
+            // Clear Supabase client session too
+            supabase.auth.signOut().catch(() => {});
+
+            showToast({
+                type: 'info',
+                title: 'Hẹn gặp lại',
+                message: `Tạm biệt ${oldUser?.fullName || 'bạn'}!`,
+                duration: 3000,
+            });
         });
-    }, [clearAuthStorage, showToast, user]);
+    }, [showToast, user]);
 
     useEffect(() => {
-        const token = localStorage.getItem('accessToken');
-        const savedUser = localStorage.getItem('user');
-        const refreshToken = localStorage.getItem('refreshToken') ?? '';
+        const handleAuthFromUrl = async () => {
+            const hash = window.location.hash;
+            if (hash && (hash.includes('access_token=') || hash.includes('error='))) {
+                try {
+                    const { data: { session }, error } = await supabase.auth.getSession();
+                    if (error) throw error;
+                    if (session) {
+                        // Exchange Supabase session for backend cookie session
+                        const response = await api.post('/Auth/login-callback', {
+                            accessToken: session.access_token,
+                            refreshToken: session.refresh_token
+                        });
 
-        if (token && savedUser) {
-            void hydrateUserFromSession(token, refreshToken)
-                .then(() => {
-                    void supabase.auth.setSession({
-                        access_token: token,
-                        refresh_token: refreshToken,
-                    }).catch(() => {});
-                })
-                .catch((error) => {
-                    console.error('Stored session is invalid:', error);
-                    clearAuthStorage();
-                    setUser(null);
-                    void syncSupabaseRealtimeAuth(null);
-                    supabase.auth.signOut().catch(() => {});
-                });
-            return;
-        }
+                        // Clear the hash from URL without reloading
+                        window.history.replaceState(null, '', window.location.pathname);
 
-        supabase.auth.getSession().then(({ data: { session } }) => {
-            console.log('[AuthContext] getSession result:', session ? `has session, user: ${session.user?.email}` : 'no session');
-
-            if (!session) {
-                console.log('[AuthContext] No session found');
-                return;
-            }
-
-            console.log('[AuthContext] Calling /Auth/me with token:', `${session.access_token.substring(0, 20)}...`);
-
-            hydrateUserFromSession(session.access_token, session.refresh_token ?? '')
-                .then((nextUser) => {
-                    console.log('[AuthContext] /Auth/me SUCCESS:', nextUser);
-                    window.dispatchEvent(new CustomEvent('auth-toast', {
-                        detail: {
-                            type: 'success',
-                            title: 'Dang nhap thanh cong',
-                            message: 'Chao mung ban tro lai!',
-                        },
-                    }));
-                })
-                .catch((err) => {
-                    console.error('[AuthContext] /Auth/me FAILED:', err.response?.data || err.message);
-                    clearAuthStorage();
-                    supabase.auth.signOut().catch(() => {});
-                    const msg = err.response?.data?.message || err.message || 'Khong the lay thong tin tai khoan. Vui long thu lai.';
-                    window.dispatchEvent(new CustomEvent('auth-toast', {
-                        detail: {
-                            type: 'error',
-                            title: 'Dang nhap that bai',
-                            message: msg,
-                        },
-                    }));
-                });
-        });
-    }, [clearAuthStorage, hydrateUserFromSession, refreshUser]);
-
-    useEffect(() => {
-        const {
-            data: { subscription },
-        } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'TOKEN_REFRESHED' && session?.access_token) {
-                syncTokens(session.access_token, session.refresh_token ?? '');
-                return;
-            }
-
-            if (event === 'SIGNED_IN' && session?.access_token) {
-                syncTokens(session.access_token, session.refresh_token ?? '');
-
-                if (user) {
-                    persistUser(user, session.access_token, session.refresh_token ?? '');
-                    return;
+                        // Use the user data from backend
+                        login('cookie-session', '', response.data);
+                    }
+                } catch (err) {
+                    console.error('Xử lý Google Auth thất bại:', err);
                 }
-
-                void hydrateUserFromSession(session.access_token, session.refresh_token ?? '').catch((error) => {
-                    console.error('[AuthContext] Failed to hydrate user after SIGNED_IN:', error);
-                    clearAuthStorage();
-                    setUser(null);
-                    void syncSupabaseRealtimeAuth(null);
-                });
-                return;
             }
-
-            if (event === 'SIGNED_OUT') {
-                clearAuthStorage();
-                setUser(null);
-                void syncSupabaseRealtimeAuth(null);
-            }
-        });
-
-        return () => {
-            subscription.unsubscribe();
         };
-    }, [clearAuthStorage, hydrateUserFromSession, persistUser, syncTokens, user]);
+
+        handleAuthFromUrl();
+
+        void hydrateUserFromCookie();
+    }, [hydrateUserFromCookie]);
 
     useEffect(() => {
         const handleExpiredSession = () => {
-            clearAuthStorage();
             setUser(null);
             void syncSupabaseRealtimeAuth(null);
             supabase.auth.signOut().catch(() => {});
@@ -209,7 +138,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return () => {
             window.removeEventListener('auth-session-expired', handleExpiredSession);
         };
-    }, [clearAuthStorage]);
+    }, []);
 
     useEffect(() => {
         if (!user?.id) return;
@@ -245,21 +174,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }, [user?.id]);
 
     const login = (token: string, refreshToken: string, newUser: User) => {
-        if (!token) {
-            console.warn('[Auth] login called without access token; skipping session persistence');
-            return;
+        // When using cookie auth, token might be a placeholder or null if the backend already set the cookie.
+        // However, we still want to sync Supabase Realtime if we have a token.
+        if (token && token !== 'cookie-session') {
+            void syncSupabaseRealtimeAuth(token);
+            void supabase.auth.setSession({ access_token: token, refresh_token: refreshToken }).catch(() => {});
         }
 
-        persistUser(newUser, token, refreshToken);
-        void supabase.auth.setSession({ access_token: token, refresh_token: refreshToken }).then(({ error }) => {
-            if (error) {
-                console.warn('[Auth] supabase.auth.setSession:', error.message);
-            }
-        });
+        setIsHydrating(false);
+        setUser(newUser);
         showToast({
             type: 'success',
-            title: 'Dang nhap thanh cong',
-            message: `Chao mung ${newUser.fullName || newUser.email} tro lai!`,
+            title: 'Đăng nhập thành công',
+            message: `Chào mừng ${newUser.fullName || newUser.email} trở lại!`,
             duration: 4000,
         });
     };
@@ -268,14 +195,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
             const response = await api.put('/Profile/update', data);
             if (response.data.user) {
-                const updatedUser = response.data.user;
-                localStorage.setItem('user', JSON.stringify(updatedUser));
-                setUser(updatedUser);
+                setUser(response.data.user);
             }
             showToast({
                 type: 'success',
-                title: 'Thanh cong',
-                message: 'Thong tin ca nhan da duoc cap nhat.',
+                title: 'Thành công',
+                message: 'Thông tin cá nhân đã được cập nhật.',
                 duration: 4000,
             });
             return true;
@@ -286,7 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, updateUser, refreshUser, isAuthenticated: !!user }}>
+        <AuthContext.Provider value={{ user, login, logout, updateUser, refreshUser, isAuthenticated: !!user, isHydrating }}>
             {children}
         </AuthContext.Provider>
     );

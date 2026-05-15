@@ -15,13 +15,15 @@ public class AdminService : IAdminService
     private readonly Supabase.Client _supabaseClient;
     private readonly IConfiguration _configuration;
     private readonly INotificationService _notificationService;
+    private readonly IContributionScoringService _contributionScoringService;
     private readonly ILogger<AdminService> _logger;
 
-    public AdminService(Supabase.Client supabaseClient, IConfiguration configuration, INotificationService notificationService, ILogger<AdminService> logger)
+    public AdminService(Supabase.Client supabaseClient, IConfiguration configuration, INotificationService notificationService, IContributionScoringService contributionScoringService, ILogger<AdminService> logger)
     {
         _supabaseClient = supabaseClient;
         _configuration = configuration;
         _notificationService = notificationService;
+        _contributionScoringService = contributionScoringService;
         _logger = logger;
     }
 
@@ -848,9 +850,16 @@ public class AdminService : IAdminService
             if (result.Models.Count == 0) return false;
             var doc = result.Models[0];
 
+            var wasAlreadyApproved = doc.IsApproved;
+
             doc.IsApproved = true;
             doc.UpdatedAt = DateTime.UtcNow;
             await _supabaseClient.From<Document>().Upsert(doc);
+
+            if (!wasAlreadyApproved)
+            {
+                await _contributionScoringService.AddDocumentApprovalPointsAsync(doc.UploaderId);
+            }
 
             // Update admin grouped notification with new count
             try

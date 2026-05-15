@@ -1,3 +1,4 @@
+using System.IdentityModel.Tokens.Jwt;
 using System.Text;
 using System.Text.Json;
 using HueSTD.Application.DTOs.Auth;
@@ -143,12 +144,35 @@ public class AuthService : IAuthService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "[AuthService] Error validating token");
-            if (ex.InnerException != null)
+            _logger.LogWarning(ex, "[AuthService] GetUser failed, falling back to JWT payload parsing");
+
+            var jwtUserId = TryGetUserIdFromJwt(token);
+            if (string.IsNullOrWhiteSpace(jwtUserId) || !Guid.TryParse(jwtUserId, out var userGuid))
             {
-                _logger.LogError(ex.InnerException, "[AuthService] Inner exception");
+                _logger.LogError("[AuthService] JWT fallback failed: missing/invalid sub claim");
+                return null;
             }
 
+            return await BuildUserDtoAsync(userGuid);
+        }
+    }
+
+    private string? TryGetUserIdFromJwt(string token)
+    {
+        try
+        {
+            var handler = new JwtSecurityTokenHandler();
+            if (!handler.CanReadToken(token))
+            {
+                return null;
+            }
+
+            var jwt = handler.ReadJwtToken(token);
+            return jwt.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[AuthService] Failed to parse JWT token");
             return null;
         }
     }

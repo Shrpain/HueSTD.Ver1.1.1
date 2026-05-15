@@ -70,6 +70,7 @@ public static class DependencyInjection
         services.AddScoped<IDashboardService, DashboardService>();
         services.AddScoped<IAdminService, AdminService>();
         services.AddScoped<INotificationService, NotificationService>();
+        services.AddScoped<IContributionScoringService, ContributionScoringService>();
         services.AddScoped<IChatService, ChatService>();
         services.AddScoped<IExamService, ExamService>();
         services.AddScoped<IAssistantRealtimeService, PersistentAssistantRealtimeService>();

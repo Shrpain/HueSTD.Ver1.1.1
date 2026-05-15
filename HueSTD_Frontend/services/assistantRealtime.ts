@@ -60,7 +60,7 @@ const resolveHubUrl = () => {
 export const createAssistantConnection = () => {
   return new HubConnectionBuilder()
     .withUrl(resolveHubUrl(), {
-      accessTokenFactory: () => localStorage.getItem('accessToken') || '',
+      withCredentials: true,
     })
     .withAutomaticReconnect([0, 2000, 5000, 10000, 20000])
     .configureLogging(LogLevel.Warning)

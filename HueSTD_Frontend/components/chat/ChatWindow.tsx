@@ -489,7 +489,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
   const handleReportMessage = async (message: Message) => {
     if (reportingMessageId) return;
 
-    const confirmed = window.confirm('Bao cao tin nhan nay toi admin de kiem duyet?');
+    const confirmed = window.confirm('Báo cáo tin nhắn này tới admin để kiểm duyệt?');
     if (!confirmed) return;
 
     setReportingMessageId(message.id);
@@ -499,10 +499,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
         senderName: message.senderName,
         conversationId: message.conversationId,
       });
-      window.alert('Da gui bao cao toi admin.');
+      window.alert('Đã gửi báo cáo tới admin.');
     } catch (error) {
       console.error('Failed to report message:', error);
-      window.alert('Khong the bao cao tin nhan luc nay.');
+      window.alert('Không thể báo cáo tin nhắn lúc này.');
     } finally {
       setReportingMessageId(null);
     }
@@ -527,8 +527,8 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    if (date.toDateString() === today.toDateString()) return 'Hom nay';
-    if (date.toDateString() === yesterday.toDateString()) return 'Hom qua';
+    if (date.toDateString() === today.toDateString()) return 'Hôm nay';
+    if (date.toDateString() === yesterday.toDateString()) return 'Hôm qua';
 
     return date.toLocaleDateString('vi-VN', {
       weekday: 'long',
@@ -584,11 +584,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             </div>
           )}
           <div>
-            <h3 className="font-bold text-slate-800">{conversationName || 'Cuoc tro chuyen'}</h3>
+            <h3 className="font-bold text-slate-800">{conversationName || 'Cuộc trò chuyện'}</h3>
             {typingStatus?.isTyping ? (
-              <p className="text-xs text-teal-600 font-medium">Dang nhap...</p>
+              <p className="text-xs text-teal-600 font-medium">Đang nhập...</p>
             ) : conversationType === 'group' ? (
-              <p className="text-xs text-slate-500">Nhom</p>
+              <p className="text-xs text-slate-500">Nhóm</p>
             ) : null}
           </div>
         </div>
@@ -609,11 +609,11 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
             <div className="w-16 h-16 bg-slate-200 rounded-full flex items-center justify-center mb-4">
               <Send size={24} className="text-slate-400" />
             </div>
-            <p className="text-slate-500 font-medium">Bat dau cuoc tro chuyen</p>
+            <p className="text-slate-500 font-medium">Bắt đầu cuộc trò chuyện</p>
             <p className="text-slate-400 text-sm mt-1">
               {isDraftConversation
-                ? 'Chi khi gui tin nhan dau tien thi cuoc tro chuyen moi xuat hien trong danh sach chat'
-                : 'Gui tin nhan de bat dau'}
+                ? 'Chỉ khi gửi tin nhắn đầu tiên thì cuộc trò chuyện mới xuất hiện trong danh sách chat'
+                : 'Gửi tin nhắn để bắt đầu'}
             </p>
           </div>
         ) : (
@@ -623,7 +623,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               const showDate =
                 index === 0 ||
                 formatDate(messages[index - 1].createdAt) !== formatDate(message.createdAt);
-              const sendState = String(message.id).startsWith('temp-') ? 'Dang gui' : 'Da gui';
+              const sendState = String(message.id).startsWith('temp-') ? 'Đang gửi' : 'Đã gửi';
 
               return (
                 <React.Fragment key={message.id}>
@@ -655,7 +655,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                             onClick={() => void handleReportMessage(message)}
                             disabled={reportingMessageId === message.id}
                             className="rounded-md p-1 text-slate-400 transition-colors hover:bg-slate-100 hover:text-rose-500 disabled:opacity-50"
-                            title="Bao cao tin nhan"
+                            title="Báo cáo tin nhắn"
                           >
                             <Flag size={12} />
                           </button>
@@ -686,7 +686,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                               isOwn ? 'bg-teal-500/30 text-white' : 'bg-slate-100 text-slate-700'
                             }`}
                           >
-                            <span className="truncate">{message.fileName || 'Tap dinh kem'}</span>
+                            <span className="truncate">{message.fileName || 'Tệp đính kèm'}</span>
                             <span className="shrink-0 text-xs opacity-80">{formatFileSize(message.fileSize)}</span>
                           </a>
                         )}
@@ -707,12 +707,12 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
                         <div className={`flex items-center gap-1 mt-1 ${isOwn ? 'justify-end' : 'justify-start'}`}>
                           {message.isEdited && (
                             <span className={`text-[10px] ${isOwn ? 'text-teal-200' : 'text-slate-400'}`}>
-                              Da sua
+                              Đã sửa
                             </span>
                           )}
                           {isOwn && (
                             <span className={`text-[10px] ${isOwn ? 'text-teal-200' : 'text-slate-400'}`}>
-                              {message.id === seenMessageId ? 'Da xem' : sendState}
+                              {message.id === seenMessageId ? 'Đã xem' : sendState}
                             </span>
                           )}
                           <span className={`text-[10px] ${isOwn ? 'text-teal-200' : 'text-slate-400'}`}>
@@ -779,7 +779,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({
               value={newMessage}
               onChange={handleInputChange}
               onKeyPress={handleKeyPress}
-              placeholder="Nhap tin nhan..."
+              placeholder="Nhập tin nhắn..."
               rows={1}
               className="flex-1 min-w-0 bg-transparent resize-none text-sm leading-6 focus:outline-none max-h-32 overflow-y-auto whitespace-pre-wrap break-words [overflow-wrap:anywhere]"
               style={{ minHeight: '24px' }}

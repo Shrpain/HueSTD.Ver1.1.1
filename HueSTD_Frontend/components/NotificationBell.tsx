@@ -55,11 +55,22 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ onViewAll }) => {
 
     useEffect(() => {
         const handleRefresh = () => {
+            console.log('[NotificationBell] Refreshing due to event...');
             fetchNotifications();
             fetchUnreadCount();
         };
         window.addEventListener('REFRESH_NOTIFICATIONS', handleRefresh);
-        return () => window.removeEventListener('REFRESH_NOTIFICATIONS', handleRefresh);
+
+        // Also listen for general focus to ensure fresh data
+        const handleFocus = () => {
+            fetchUnreadCount();
+        };
+        window.addEventListener('focus', handleFocus);
+
+        return () => {
+            window.removeEventListener('REFRESH_NOTIFICATIONS', handleRefresh);
+            window.removeEventListener('focus', handleFocus);
+        };
     }, [fetchNotifications, fetchUnreadCount]);
 
     // Re-fetch when dropdown is opened to ensure fresh data
@@ -101,39 +112,10 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ onViewAll }) => {
 
         let channel: ReturnType<typeof supabase.channel> | null = null;
 
-        // Ensure Supabase client is authenticated before subscribing
+        // Now subscribe
         const setupRealtime = async () => {
             try {
-                // Try to restore existing Supabase session first
-                const { data: sessionData } = await supabase.auth.getSession();
-                
-                if (!sessionData?.session) {
-                    // No active Supabase session - sync from app's localStorage tokens
-                    const token = localStorage.getItem('accessToken');
-                    const refreshToken = localStorage.getItem('refreshToken');
-                    
-                    if (token && refreshToken) {
-                        const { error } = await supabase.auth.setSession({
-                            access_token: token,
-                            refresh_token: refreshToken
-                        });
-                        if (error) {
-                            console.warn('[NotificationBell] Could not sync Supabase session:', error.message);
-                            console.log('[NotificationBell] Falling back to polling...');
-                            startPolling();
-                            return;
-                        }
-                        console.log('[NotificationBell] Supabase session synced successfully');
-                    } else {
-                        console.warn('[NotificationBell] No tokens available for Supabase auth, using polling');
-                        startPolling();
-                        return;
-                    }
-                } else {
-                    console.log('[NotificationBell] Supabase session already active');
-                }
-
-                // Now subscribe with authenticated client
+                // Now subscribe with client
                 channel = supabase
                     .channel(`notif_${currentUser.id.substring(0, 8)}_${Date.now()}`)
                     .on(

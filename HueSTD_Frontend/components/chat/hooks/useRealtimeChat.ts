@@ -2,20 +2,17 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase, syncSupabaseRealtimeAuth } from '../../../services/supabase';
 import { Message, TypingStatus } from '../../../types/chat';
 
-/** Khôi phục JWT từ localStorage vào supabase.auth — AuthContext đã gọi setSession rồi,
- *  nhưng nếu useRealtimeChat chạy trước (SSR-like timing) thì cần gọi lại. */
+/** Đồng bộ Realtime auth từ phiên Supabase hiện tại (đã được AuthContext setSession). */
 export async function ensureSupabaseSessionForRealtime(): Promise<boolean> {
-  const token = localStorage.getItem('accessToken');
-  const refreshToken = localStorage.getItem('refreshToken') ?? '';
-  if (!token) return false;
-  const { error } = await supabase.auth.setSession({
-    access_token: token,
-    refresh_token: refreshToken,
-  });
+  const { data, error } = await supabase.auth.getSession();
   if (error) {
-    console.warn('[Chat Realtime] setSession failed:', error.message);
+    console.warn('[Chat Realtime] getSession failed:', error.message);
     return false;
   }
+
+  const token = data.session?.access_token;
+  if (!token) return false;
+
   await syncSupabaseRealtimeAuth(token);
   return true;
 }

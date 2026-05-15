@@ -29,7 +29,8 @@ public static class CorsConfigurationExtensions
             {
                 policy.SetIsOriginAllowed(origin => IsAllowedOrigin(origin, allowedOrigins))
                     .AllowAnyHeader()
-                    .AllowAnyMethod();
+                    .AllowAnyMethod()
+                    .AllowCredentials();
             });
         });
 

@@ -85,10 +85,23 @@ public static class SupabaseAuthenticationExtensions
                         var accessToken = context.Request.Query["access_token"];
                         var path = context.HttpContext.Request.Path;
 
-                        if (!string.IsNullOrWhiteSpace(accessToken) &&
-                            path.StartsWithSegments("/hubs/assistant"))
+                        // Try to get token from cookie if not in query or header
+                        if (string.IsNullOrEmpty(accessToken))
                         {
-                            context.Token = accessToken;
+                            accessToken = context.Request.Cookies["access_token"];
+                        }
+
+                        if (!string.IsNullOrWhiteSpace(accessToken))
+                        {
+                            if (path.StartsWithSegments("/hubs/assistant"))
+                            {
+                                context.Token = accessToken;
+                            }
+                            else if (string.IsNullOrEmpty(context.Request.Headers["Authorization"]))
+                            {
+                                // If no Auth header, use the cookie token for standard API requests
+                                context.Token = accessToken;
+                            }
                         }
 
                         return Task.CompletedTask;

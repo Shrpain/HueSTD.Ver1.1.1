@@ -30,7 +30,6 @@ export interface User {
   badge?: string;
   totalDocuments?: number;
   totalDownloads?: number;
-  averageRating?: number;
 }
 
 export enum UserRole {
@@ -54,7 +53,6 @@ export interface UserApiResponse {
   PublicId?: string;
   TotalDocuments?: number;
   TotalDownloads?: number;
-  AverageRating?: number;
   CreatedAt?: string;
 }
 

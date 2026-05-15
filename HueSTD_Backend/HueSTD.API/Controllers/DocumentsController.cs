@@ -126,7 +126,13 @@ public class DocumentsController : ApiControllerBase
     [HttpPost("{id}/view")]
     public async Task<IActionResult> IncrementView(Guid id)
     {
-        var success = await _documentService.IncrementViewsAsync(id);
+        Guid? actorUserId = null;
+        if (User?.Identity?.IsAuthenticated == true)
+        {
+            actorUserId = CurrentUserId;
+        }
+
+        var success = await _documentService.IncrementViewsAsync(id, actorUserId);
         if (!success)
         {
             throw new NotFoundException("Document not found.");
@@ -138,7 +144,13 @@ public class DocumentsController : ApiControllerBase
     [HttpPost("{id}/download")]
     public async Task<IActionResult> IncrementDownload(Guid id)
     {
-        var success = await _documentService.IncrementDownloadsAsync(id);
+        Guid? actorUserId = null;
+        if (User?.Identity?.IsAuthenticated == true)
+        {
+            actorUserId = CurrentUserId;
+        }
+
+        var success = await _documentService.IncrementDownloadsAsync(id, actorUserId);
         if (!success)
         {
             throw new NotFoundException("Document not found.");

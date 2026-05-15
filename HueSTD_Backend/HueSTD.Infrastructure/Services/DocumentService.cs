@@ -9,11 +9,13 @@ public class DocumentService : IDocumentService
 {
     private readonly Client _supabaseClient;
     private readonly INotificationService _notificationService;
+    private readonly IContributionScoringService _contributionScoringService;
 
-    public DocumentService(Client supabaseClient, INotificationService notificationService)
+    public DocumentService(Client supabaseClient, INotificationService notificationService, IContributionScoringService contributionScoringService)
     {
         _supabaseClient = supabaseClient;
         _notificationService = notificationService;
+        _contributionScoringService = contributionScoringService;
     }
 
     public async Task<IEnumerable<DocumentDto>> GetAllDocumentsAsync()
@@ -221,7 +223,7 @@ public class DocumentService : IDocumentService
         return score;
     }
 
-    public async Task<bool> IncrementViewsAsync(Guid documentId)
+    public async Task<bool> IncrementViewsAsync(Guid documentId, Guid? actorUserId = null)
     {
         try
         {
@@ -242,6 +244,12 @@ public class DocumentService : IDocumentService
                 .Set(x => x.Views, doc.Views)
                 .Set(x => x.UpdatedAt, doc.UpdatedAt)
                 .Update();
+
+            // Award points to uploader (if not self-view)
+            if (doc.UploaderId.HasValue && doc.UploaderId != Guid.Empty)
+            {
+                await _contributionScoringService.AddDocumentViewPointsAsync(doc.UploaderId, actorUserId);
+            }
 
             return true;
         }
@@ -299,7 +307,7 @@ public class DocumentService : IDocumentService
         }
     }
 
-    public async Task<bool> IncrementDownloadsAsync(Guid documentId)
+    public async Task<bool> IncrementDownloadsAsync(Guid documentId, Guid? actorUserId = null)
     {
         try
         {
@@ -320,6 +328,12 @@ public class DocumentService : IDocumentService
                 .Set(x => x.Downloads, doc.Downloads)
                 .Set(x => x.UpdatedAt, doc.UpdatedAt)
                 .Update();
+
+            // Award points to uploader (if not self-download)
+            if (doc.UploaderId.HasValue && doc.UploaderId != Guid.Empty)
+            {
+                await _contributionScoringService.AddDocumentDownloadPointsAsync(doc.UploaderId, actorUserId);
+            }
 
             return true;
         }
@@ -424,6 +438,12 @@ public class DocumentService : IDocumentService
                 .Get();
 
             var profile = profileResult.Models.FirstOrDefault();
+
+            // Award points for comment
+            await _contributionScoringService.AddCommentPointsAsync(userId);
+
+            // Award points for comment
+            await _contributionScoringService.AddCommentPointsAsync(userId);
 
             return new DocumentCommentDto
             {

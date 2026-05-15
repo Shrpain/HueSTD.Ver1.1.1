@@ -22,6 +22,7 @@ export interface ExamDocument {
   durationMinutes: number;
   sourceDocumentIds: string[];
   questions: ExamQuestion[];
+  questionCount?: number;
   status?: 'draft' | 'ready' | 'published';
   createdAt?: string;
 }

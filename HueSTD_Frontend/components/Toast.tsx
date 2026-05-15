@@ -90,8 +90,19 @@ interface ToastProviderProps {
 
 export const ToastProvider: React.FC<ToastProviderProps> = ({ children }) => {
   const [toasts, setToasts] = useState<ToastProps[]>([]);
+  const lastToastByKeyRef = React.useRef<Record<string, number>>({});
 
   const showToast = (toast: Omit<ToastProps, 'id' | 'onClose'>) => {
+    const now = Date.now();
+    const dedupeKey = `${toast.type}|${toast.title}|${toast.message}`;
+    const lastShownAt = lastToastByKeyRef.current[dedupeKey] ?? 0;
+
+    if (now - lastShownAt < 2500) {
+      return;
+    }
+
+    lastToastByKeyRef.current[dedupeKey] = now;
+
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { ...toast, id, onClose: removeToast }]);
   };

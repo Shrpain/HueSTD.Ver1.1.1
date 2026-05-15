@@ -24,7 +24,18 @@ public class ExamService : IExamService
             .Order(x => x.CreatedAt, Constants.Ordering.Descending)
             .Get();
 
-        return response.Models.Select(MapToDto);
+        var items = response.Models.Select(MapToDto).ToList();
+        foreach (var exam in items)
+        {
+            if (!exam.Id.HasValue) continue;
+
+            var questionsResponse = await _supabaseClient.From<HueSTD.Domain.Entities.ExamQuestion>()
+                .Where(x => x.ExamId == exam.Id.Value)
+                .Get();
+            exam.QuestionCount = questionsResponse.Models.Count;
+        }
+
+        return items;
     }
 
     public async Task<ExamDto> GetExamByIdAsync(Guid id, Guid userId)
@@ -41,6 +52,8 @@ public class ExamService : IExamService
             .Get();
 
         var examDto = MapToDto(response);
+
+        examDto.QuestionCount = questionsResponse.Models.Count;
 
         foreach (var q in questionsResponse.Models)
         {

@@ -8,6 +8,7 @@ public class ExamDto
     public int DurationMinutes { get; set; }
     public string Status { get; set; } = "draft";
     public DateTime? CreatedAt { get; set; }
+    public int QuestionCount { get; set; }
     public List<ExamQuestionDto> Questions { get; set; } = new();
 }
 

@@ -37,6 +37,19 @@ public class AuthResponse
     public UserDto? User { get; set; }
 }
 
+public class LoginCallbackRequest
+{
+    [Required(ErrorMessage = "Access token is required")]
+    public required string AccessToken { get; set; }
+
+    public string? RefreshToken { get; set; }
+}
+
+public class LoginCallbackResponse
+{
+    public UserDto? User { get; set; }
+}
+
 public class UserDto
 {
     public string? Id { get; set; }
@@ -54,6 +67,7 @@ public class UserDto
     public int TotalDownloads { get; set; }
     public double AverageRating { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? AccessToken { get; set; }
 }
 
 public class UpdateProfileRequest

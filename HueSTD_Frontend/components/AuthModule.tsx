@@ -32,9 +32,12 @@ const AuthModule: React.FC<AuthModuleProps> = ({ onClose, onLoginSuccess }) => {
     try {
       if (mode === 'login') {
         const response = await api.post('/Auth/login', { email, password });
-        login(response.data.accessToken, response.data.refreshToken, response.data.user);
+
+        // Backend now sets HttpOnly cookies and returns user info only.
+        // We still sync Realtime with Supabase if needed later, but auth state is driven by cookie + /Auth/me hydration.
+        login('cookie-session', '', response.data);
         setSuccess('Đăng nhập thành công! Đang chuyển hướng...');
-        setTimeout(() => onLoginSuccess(), 1000);
+        setTimeout(() => onLoginSuccess(), 600);
       } else {
         await api.post('/Auth/register', {
           email,
@@ -62,11 +65,10 @@ const AuthModule: React.FC<AuthModuleProps> = ({ onClose, onLoginSuccess }) => {
 
     try {
       const redirectTo = `${window.location.origin}${window.location.pathname || '/'}`;
-      const { data, error: oauthError } = await supabase.auth.signInWithOAuth({
+      const { error: oauthError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
         options: {
           redirectTo,
-          skipBrowserRedirect: true,
         },
       });
 
@@ -75,82 +77,6 @@ const AuthModule: React.FC<AuthModuleProps> = ({ onClose, onLoginSuccess }) => {
         setLoading(false);
         return;
       }
-
-      if (!data?.url) {
-        setError('Không thể mở luồng đăng nhập Google.');
-        setLoading(false);
-        return;
-      }
-
-      const popupWidth = 520;
-      const popupHeight = 720;
-      const left = window.screenX + (window.outerWidth - popupWidth) / 2;
-      const top = window.screenY + (window.outerHeight - popupHeight) / 2;
-      const popup = window.open(
-        data.url,
-        'google-oauth',
-        `width=${popupWidth},height=${popupHeight},left=${Math.max(0, Math.floor(left))},top=${Math.max(0, Math.floor(top))},resizable=yes,scrollbars=yes`
-      );
-
-      if (!popup) {
-        setError('Trình duyệt đã chặn cửa sổ đăng nhập. Vui lòng cho phép pop-up và thử lại.');
-        setLoading(false);
-        return;
-      }
-
-      popup.focus();
-
-      let done = false;
-      const startedAt = Date.now();
-      const maxWaitMs = 2 * 60 * 1000;
-
-      const finishLogin = async () => {
-        const { data: sessionData } = await supabase.auth.getSession();
-        const session = sessionData.session;
-        if (!session?.access_token) {
-          return false;
-        }
-
-        const meResponse = await api.get('/Auth/me', {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        });
-
-        login(session.access_token, session.refresh_token ?? '', meResponse.data);
-        setSuccess('Đăng nhập Google thành công!');
-        done = true;
-        if (!popup.closed) popup.close();
-        setLoading(false);
-        setTimeout(() => onLoginSuccess(), 400);
-        return true;
-      };
-
-      const watcher = window.setInterval(async () => {
-        if (done) {
-          window.clearInterval(watcher);
-          return;
-        }
-
-        try {
-          const completed = await finishLogin();
-          if (completed) {
-            window.clearInterval(watcher);
-            return;
-          }
-        } catch (err: any) {
-          window.clearInterval(watcher);
-          if (!popup.closed) popup.close();
-          setError(err?.response?.data?.message || err?.message || 'Đăng nhập Google thất bại.');
-          setLoading(false);
-          return;
-        }
-
-        if (popup.closed || Date.now() - startedAt > maxWaitMs) {
-          window.clearInterval(watcher);
-          if (!done) {
-            setLoading(false);
-          }
-        }
-      }, 700);
     } catch (err: any) {
       setError(err?.message || 'Có lỗi xảy ra. Vui lòng thử lại.');
       setLoading(false);

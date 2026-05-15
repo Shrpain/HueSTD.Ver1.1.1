@@ -70,9 +70,9 @@ export const chatService = {
       }
 
       return api.post('/Notification/notify-admins', {
-        title: 'Bao cao tin nhan chat',
+        title: 'Báo cáo tin nhắn chat',
         type: 'chat_report',
-        message: `MessageId: ${messageId}\nConversation: ${fallbackPayload.conversationId}\nNguoi gui tin nhan: ${fallbackPayload.senderName}\nNoi dung nguyen van:\n${fallbackPayload.messageContent}${reason ? `\nLy do: ${reason}` : ''}`,
+        message: `MessageId: ${messageId}\nConversation: ${fallbackPayload.conversationId}\nNgười gửi tin nhắn: ${fallbackPayload.senderName}\nNội dung nguyên văn:\n${fallbackPayload.messageContent}${reason ? `\nLý do: ${reason}` : ''}`,
       });
     }
   },

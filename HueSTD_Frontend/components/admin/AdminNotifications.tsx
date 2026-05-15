@@ -3,6 +3,8 @@ import { Bell, Send, Loader2, AlertCircle, CheckCircle2, Trash2, Flag, Check } f
 import api from '../../services/api';
 import { chatService } from '../../services/chatService';
 import { supabase } from '../../services/supabase';
+import { useAuth } from '../../context/AuthContext';
+import { useToast } from '../Toast';
 
 interface Notification {
   id: string;
@@ -25,8 +27,22 @@ const parseConversationIdFromReport = (message: string) => {
   return match?.[1] ?? null;
 };
 
+const mapDbNotification = (payload: any): Notification & { userId?: string } => ({
+  id: payload.id,
+  title: payload.title,
+  message: payload.message,
+  type: payload.type,
+  isRead: payload.is_read,
+  createdAt: payload.created_at,
+  referenceId: payload.reference_id,
+  userId: payload.user_id,
+});
+
 const AdminNotifications: React.FC = () => {
+  const { user } = useAuth();
+  const { showToast } = useToast();
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [sendSuccess, setSendSuccess] = useState(false);
@@ -70,16 +86,75 @@ const AdminNotifications: React.FC = () => {
 
     const startPolling = () => {
       if (pollingInterval) return;
+      // Fallback polling every 30 seconds (standard fallback, not primary)
       pollingInterval = setInterval(() => {
         void fetchNotifications(false);
-      }, 20000);
+      }, 30000);
     };
 
+    const handleRealtimeChange = (payload: any) => {
+      console.log('[AdminNotifications] Realtime event received:', payload.eventType, payload);
+
+      if (payload.eventType === 'INSERT') {
+        const newNotification = mapDbNotification(payload.new);
+        if (user?.id && newNotification.userId && newNotification.userId !== user.id) {
+          return;
+        }
+        setNotifications((prev) => {
+          if (prev.some((n) => n.id === newNotification.id)) return prev;
+          console.log('[AdminNotifications] Adding new notification to UI');
+          return [newNotification, ...prev];
+        });
+        setHighlightedId(newNotification.id);
+        setTimeout(() => setHighlightedId((current) => (current === newNotification.id ? null : current)), 4000);
+
+        if (newNotification.type === 'chat_report') {
+          showToast({
+            type: 'warning',
+            title: 'Báo cáo chat mới',
+            message: newNotification.title,
+            duration: 4000,
+          });
+        } else {
+          showToast({
+            type: 'info',
+            title: 'Thông báo mới',
+            message: newNotification.title,
+            duration: 3000,
+          });
+        }
+      } else if (payload.eventType === 'UPDATE') {
+        const updatedNotification = mapDbNotification(payload.new);
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === updatedNotification.id ? updatedNotification : n))
+        );
+      } else if (payload.eventType === 'DELETE') {
+        const deletedId = payload.old.id;
+        setNotifications((prev) => prev.filter((n) => n.id !== deletedId));
+      }
+    };
+
+    // Use a unique channel name to avoid conflicts and force fresh subscription
+    const channelName = `admin_notif_v2_${Date.now()}`;
     const channel = supabase
-      .channel('admin_notifications_realtime_page')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, debouncedFetch)
-      .subscribe((status) => {
+      .channel(channelName)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'notifications',
+          filter: user?.id ? `user_id=eq.${user.id}` : undefined,
+        },
+        handleRealtimeChange
+      )
+      .subscribe(async (status) => {
+        console.log(`[AdminNotifications] Channel [${channelName}] status:`, status);
+        if (status === 'SUBSCRIBED') {
+          console.log('🚀 Realtime Subscribed successfully! Ready for new reports.');
+        }
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error('[AdminNotifications] Realtime connection failed. Falling back to polling.');
           startPolling();
         }
       });
@@ -89,7 +164,7 @@ const AdminNotifications: React.FC = () => {
       if (pollingInterval) clearInterval(pollingInterval);
       supabase.removeChannel(channel);
     };
-  }, [fetchNotifications]);
+  }, [fetchNotifications, user?.id]);
 
   const markAsRead = async (id: string) => {
     try {
@@ -151,7 +226,7 @@ const AdminNotifications: React.FC = () => {
       await deleteNotification(notification.id);
     } catch (error) {
       console.error('Failed to delete reported message:', error);
-      window.alert('Khong the xoa tin nhan nay luc nay.');
+      window.alert('Không thể xóa tin nhắn này lúc này.');
     }
   };
 
@@ -170,7 +245,7 @@ const AdminNotifications: React.FC = () => {
         setActiveTab('notifications');
       }, 2000);
     } catch (error: any) {
-      setSendError(error.response?.data?.error || 'Gui thong bao that bai.');
+      setSendError(error.response?.data?.error || 'Gửi thông báo thất bại.');
     } finally {
       setSending(false);
     }
@@ -184,10 +259,10 @@ const AdminNotifications: React.FC = () => {
     const diffHours = Math.floor(diffMins / 60);
     const diffDays = Math.floor(diffHours / 24);
 
-    if (diffMins < 1) return 'Vua xong';
-    if (diffMins < 60) return `${diffMins} phut truoc`;
-    if (diffHours < 24) return `${diffHours} gio truoc`;
-    if (diffDays < 7) return `${diffDays} ngay truoc`;
+    if (diffMins < 1) return 'Vừa xong';
+    if (diffMins < 60) return `${diffMins} phút trước`;
+    if (diffHours < 24) return `${diffHours} giờ trước`;
+    if (diffDays < 7) return `${diffDays} ngày trước`;
     return date.toLocaleDateString('vi-VN');
   };
 
@@ -217,8 +292,8 @@ const AdminNotifications: React.FC = () => {
     <div className="space-y-6 animate-in fade-in duration-500">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-black text-slate-800">Quan ly thong bao</h2>
-          <p className="text-slate-500">Thong bao chung va bao cao tin nhan cho admin</p>
+          <h2 className="text-2xl font-black text-slate-800">Quản lý thông báo</h2>
+          <p className="text-slate-500">Thông báo chung và báo cáo tin nhắn cho admin</p>
         </div>
         <div className="flex gap-2">
           <button
@@ -227,10 +302,10 @@ const AdminNotifications: React.FC = () => {
               activeTab === 'notifications'
                 ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200'
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-            }`}
+            } ${unreadCount > 0 ? 'animate-pulse' : ''}`}
           >
             <Bell size={16} className="inline mr-2" />
-            Thong bao
+            Thông báo
             {unreadCount > 0 && (
               <span className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded-full text-xs">{unreadCount}</span>
             )}
@@ -241,10 +316,10 @@ const AdminNotifications: React.FC = () => {
               activeTab === 'reports'
                 ? 'bg-rose-600 text-white shadow-lg shadow-rose-200'
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
-            }`}
+            } ${unreadReportCount > 0 ? 'animate-pulse' : ''}`}
           >
             <Flag size={16} className="inline mr-2" />
-            Bao cao chat
+            Báo cáo chat
             {unreadReportCount > 0 && (
               <span className="ml-2 bg-red-500 text-white px-2 py-0.5 rounded-full text-xs">{unreadReportCount}</span>
             )}
@@ -258,7 +333,7 @@ const AdminNotifications: React.FC = () => {
             }`}
           >
             <Send size={16} className="inline mr-2" />
-            Gui thong bao
+            Gửi thông báo
           </button>
         </div>
       </div>
@@ -267,10 +342,10 @@ const AdminNotifications: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between">
-              <h3 className="font-bold text-slate-800">Danh sach thong bao</h3>
+              <h3 className="font-bold text-slate-800">Danh sách thông báo</h3>
               {unreadCount > 0 && (
                 <button onClick={markAllAsRead} className="text-sm text-indigo-600 hover:text-indigo-800 font-medium">
-                  Danh dau tat ca da doc
+                  Danh dấu tất cả đã đọc
                 </button>
               )}
             </div>
@@ -282,14 +357,16 @@ const AdminNotifications: React.FC = () => {
             ) : generalNotifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                 <Bell size={48} className="mb-3 opacity-30" />
-                <p>Chua co thong bao nao</p>
+                <p>Chưa có thông báo nào</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-100 max-h-[500px] overflow-y-auto">
                 {generalNotifications.map((notification) => (
                   <div
                     key={notification.id}
-                    className={`p-4 hover:bg-slate-50 transition-colors ${!notification.isRead ? 'bg-indigo-50/50' : ''}`}
+                    className={`p-4 hover:bg-slate-50 transition-all ${!notification.isRead ? 'bg-indigo-50/50' : ''} ${
+                      highlightedId === notification.id ? 'ring-2 ring-indigo-400 bg-indigo-50 ring-inset animate-pulse' : ''
+                    }`}
                   >
                     <div className="flex items-start gap-3">
                       <div className="text-2xl flex-shrink-0">{getNotificationIcon(notification.type)}</div>
@@ -305,7 +382,7 @@ const AdminNotifications: React.FC = () => {
                           <span className="text-xs text-slate-500">{formatTime(notification.createdAt)}</span>
                           {!notification.isRead && (
                             <button onClick={() => markAsRead(notification.id)} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
-                              Danh dau da doc
+                              Danh dấu đã đọc
                             </button>
                           )}
                         </div>
@@ -322,15 +399,15 @@ const AdminNotifications: React.FC = () => {
               <h3 className="font-bold text-slate-800 mb-4">Tong quan</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Thong bao thuong</span>
+                  <span className="text-slate-600">Thông báo thuong</span>
                   <span className="font-bold text-slate-800">{generalNotifications.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Bao cao chat</span>
+                  <span className="text-slate-600">Báo cáo chat</span>
                   <span className="font-bold text-rose-600">{reportNotifications.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Chua doc</span>
+                  <span className="text-slate-600">Chưa đọc</span>
                   <span className="font-bold text-indigo-600">{unreadCount}</span>
                 </div>
               </div>
@@ -344,8 +421,8 @@ const AdminNotifications: React.FC = () => {
           <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="p-4 border-b border-slate-200 flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-slate-800">Bao cao tin nhan</h3>
-                <p className="text-sm text-slate-500 mt-1">Admin kiem duyet nguyen van noi dung bi bao cao</p>
+                <h3 className="font-bold text-slate-800">Báo cáo tin nhắn</h3>
+                <p className="text-sm text-slate-500 mt-1">Admin kiểm duyệt nguyên văn nội dung bị báo cáo</p>
               </div>
             </div>
 
@@ -356,19 +433,25 @@ const AdminNotifications: React.FC = () => {
             ) : reportNotifications.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-64 text-slate-400">
                 <Flag size={48} className="mb-3 opacity-30" />
-                <p>Chua co bao cao chat nao</p>
+                <p>Chưa có báo cáo chat nào</p>
               </div>
             ) : (
               <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
                 {reportNotifications.map((notification) => (
-                  <div key={notification.id} className={`p-5 ${!notification.isRead ? 'bg-rose-50/50' : 'hover:bg-slate-50'}`}>
+                  <div
+                    key={notification.id}
+                    className={`p-5 transition-all ${
+                      highlightedId === notification.id ? 'ring-2 ring-rose-400 bg-rose-50 ring-inset animate-pulse' :
+                      !notification.isRead ? 'bg-rose-50/50' : 'hover:bg-slate-50'
+                    }`}
+                  >
                     <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 mb-2">
                           <span className="text-lg">🚩</span>
                           <h4 className="font-bold text-slate-800">{notification.title}</h4>
                           {!notification.isRead && (
-                            <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">Moi</span>
+                            <span className="px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 text-xs font-semibold">Mới</span>
                           )}
                         </div>
                         <pre className="whitespace-pre-wrap break-words text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-2xl p-4 font-sans">
@@ -386,7 +469,7 @@ const AdminNotifications: React.FC = () => {
                             className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
                           >
                             <Check size={16} />
-                            Da duyet
+                            Đã duyệt
                           </button>
                         )}
                         <button
@@ -394,7 +477,7 @@ const AdminNotifications: React.FC = () => {
                           className="inline-flex items-center gap-2 rounded-xl bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200"
                         >
                           <Trash2 size={16} />
-                          Xoa tin nhan
+                          Xóa tin nhắn
                         </button>
                       </div>
                     </div>
@@ -406,18 +489,18 @@ const AdminNotifications: React.FC = () => {
 
           <div className="space-y-4">
             <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
-              <h3 className="font-bold text-slate-800 mb-4">Thong ke bao cao</h3>
+              <h3 className="font-bold text-slate-800 mb-4">Thống kê báo cáo</h3>
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Tong bao cao</span>
+                  <span className="text-slate-600">Tổng báo cáo</span>
                   <span className="font-bold text-slate-800">{reportNotifications.length}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Chua duyet</span>
+                  <span className="text-slate-600">Chưa duyệt</span>
                   <span className="font-bold text-rose-600">{unreadReportCount}</span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-slate-600">Da duyet</span>
+                  <span className="text-slate-600">Đã duyệt</span>
                   <span className="font-bold text-emerald-600">{reportNotifications.length - unreadReportCount}</span>
                 </div>
               </div>
@@ -427,9 +510,9 @@ const AdminNotifications: React.FC = () => {
               <div className="flex items-start gap-3">
                 <AlertCircle className="text-rose-600 flex-shrink-0 mt-0.5" size={20} />
                 <div>
-                  <h4 className="font-bold text-rose-900">Xu ly bao cao</h4>
+                  <h4 className="font-bold text-rose-900">Xử lý báo cáo</h4>
                   <p className="text-sm text-rose-700 mt-1">
-                    `Da duyet` se giu bao cao nhu mot muc da xu ly. `Xoa tin nhan` se xoa tin nhan goc trong chat va dong thoi xoa muc bao cao.
+                    `Đã duyệt` sẽ giữ báo cáo như một mục đã xử lý. `Xóa tin nhắn` sẽ xóa tin nhắn gốc trong chat và đồng thời xóa mục báo cáo.
                   </p>
                 </div>
               </div>
@@ -446,8 +529,8 @@ const AdminNotifications: React.FC = () => {
                 <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4">
                   <CheckCircle2 size={40} />
                 </div>
-                <h3 className="text-xl font-bold text-slate-800">Gui thong bao thanh cong</h3>
-                <p className="text-slate-500 mt-2">Tat ca nguoi dung da nhan duoc thong bao.</p>
+                <h3 className="text-xl font-bold text-slate-800">Gửi thông báo thành công</h3>
+                <p className="text-slate-500 mt-2">Tất cả người dùng đã nhận được thông báo.</p>
               </div>
             ) : (
               <form onSubmit={handleBroadcast} className="space-y-6">
@@ -455,7 +538,7 @@ const AdminNotifications: React.FC = () => {
                   <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mx-auto mb-4">
                     <Send size={32} />
                   </div>
-                  <h3 className="text-xl font-bold text-slate-800">Gui thong bao den tat ca nguoi dung</h3>
+                  <h3 className="text-xl font-bold text-slate-800">Gửi thông báo đến tất cả người dùng</h3>
                 </div>
 
                 {sendError && (
@@ -466,21 +549,21 @@ const AdminNotifications: React.FC = () => {
                 )}
 
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Loai thong bao</label>
+                  <label className="text-sm font-bold text-slate-700">Loại thông báo</label>
                   <select
                     value={broadcastForm.type}
                     onChange={(e) => setBroadcastForm({ ...broadcastForm, type: e.target.value })}
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
                   >
-                    <option value="system">Thong bao he thong</option>
-                    <option value="document">Tai lieu</option>
-                    <option value="message">Tin nhan</option>
-                    <option value="approval">Thong bao chung</option>
+                    <option value="system">Thông báo hệ thống</option>
+                    <option value="document">Tài liệu</option>
+                    <option value="message">Tin nhắn</option>
+                    <option value="approval">Thông báo chung</option>
                   </select>
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Tieu de</label>
+                  <label className="text-sm font-bold text-slate-700">Tiêu đề</label>
                   <input
                     type="text"
                     required
@@ -491,7 +574,7 @@ const AdminNotifications: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Noi dung</label>
+                  <label className="text-sm font-bold text-slate-700">Nội dung</label>
                   <textarea
                     rows={5}
                     required
@@ -509,12 +592,12 @@ const AdminNotifications: React.FC = () => {
                   {sending ? (
                     <>
                       <Loader2 size={18} className="animate-spin" />
-                      Dang gui...
+                      Đang gửi...
                     </>
                   ) : (
                     <>
                       <Send size={18} />
-                      Gui thong bao
+                      Gửi thông báo
                     </>
                   )}
                 </button>

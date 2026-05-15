@@ -30,7 +30,71 @@ public class AuthController : ApiControllerBase
     public async Task<IActionResult> Login([FromBody] LoginRequest request)
     {
         var result = await _authService.LoginAsync(request);
-        return Ok(result);
+
+        // Set HttpOnly cookies for access and refresh tokens
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = false, // Set to false for local development without HTTPS
+            SameSite = SameSiteMode.Lax,
+            Expires = DateTimeOffset.UtcNow.AddDays(30),
+            Path = "/"
+        };
+
+        Response.Cookies.Append("access_token", result.AccessToken, cookieOptions);
+        if (!string.IsNullOrEmpty(result.RefreshToken))
+        {
+            Response.Cookies.Append("refresh_token", result.RefreshToken, cookieOptions);
+        }
+
+        // Return user info but omit tokens from the response body to encourage cookie usage
+        return Ok(result.User);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("login-callback")]
+    public async Task<IActionResult> LoginCallback([FromBody] LoginCallbackRequest request)
+    {
+        var user = await _authService.GetCurrentUserFromTokenAsync(request.AccessToken);
+        if (user == null)
+        {
+            throw new UnauthorizedException("Invalid Google access token.");
+        }
+
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = false,
+            SameSite = SameSiteMode.Lax,
+            Expires = DateTimeOffset.UtcNow.AddDays(30),
+            Path = "/"
+        };
+
+        Response.Cookies.Append("access_token", request.AccessToken, cookieOptions);
+        if (!string.IsNullOrWhiteSpace(request.RefreshToken))
+        {
+            Response.Cookies.Append("refresh_token", request.RefreshToken, cookieOptions);
+        }
+
+        return Ok(user);
+    }
+
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    public IActionResult Logout()
+    {
+        var cookieOptions = new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = false,
+            SameSite = SameSiteMode.Lax,
+            Path = "/"
+        };
+
+        Response.Cookies.Delete("access_token", cookieOptions);
+        Response.Cookies.Delete("refresh_token", cookieOptions);
+
+        return Ok(new { message = "Logged out successfully" });
     }
 
     [Authorize]
@@ -43,6 +107,7 @@ public class AuthController : ApiControllerBase
             throw new UnauthorizedException("Invalid or expired token.");
         }
 
+        user.AccessToken = Request.Cookies["access_token"];
         return Ok(user);
     }
 

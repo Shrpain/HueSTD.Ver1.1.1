@@ -22,6 +22,7 @@ interface UserRanking {
   fullName: string;
   publicId: string;
   avatarUrl?: string;
+  badge?: string;
   points: number;
   rank: number;
 }
@@ -257,7 +258,13 @@ const Dashboard: React.FC<DashboardProps> = ({ setActiveTab }) => {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold text-slate-700 truncate group-hover:text-teal-700 transition-colors duration-300">{user.fullName}</div>
-                    <div className="text-[10px] text-slate-400 uppercase group-hover:text-teal-600 transition-colors duration-300">{user.rank === 1 ? 'Hạng nhất' : 'Thành viên'}</div>
+                    <div className="text-[10px] text-slate-400 uppercase group-hover:text-teal-600 transition-colors duration-300 flex items-center gap-1">
+                      {user.badge && user.badge !== 'Member' && (
+                        <span className="text-amber-500 font-bold">★ {user.badge}</span>
+                      )}
+                      {user.badge === 'Member' && 'Thành viên'}
+                      {user.rank === 1 && 'Hạng nhất'}
+                    </div>
                   </div>
                   <div className="text-right group-hover:scale-110 transition-transform duration-300">
                     <div className="text-sm font-bold text-teal-700">{user.points?.toLocaleString()}</div>

@@ -10,20 +10,15 @@ const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '';
 
 const api = axios.create({
   baseURL: apiBaseUrl,
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Add a request interceptor to include the JWT token
+// Add a request interceptor (Handles cleanup and FormData)
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    } else {
-      console.warn('[API] No token found in localStorage for request:', config.url);
-    }
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
     }
@@ -32,27 +27,40 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
+let isExpiredToastShowing = false;
+
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     const status = error?.response?.status;
     const message = error?.response?.data?.message || error?.response?.data?.error || '';
-    const hadStoredToken = !!localStorage.getItem('accessToken');
-    const authHeader = error?.config?.headers?.Authorization || error?.config?.headers?.authorization;
-    const requestHadBearerToken = typeof authHeader === 'string' && authHeader.startsWith('Bearer ');
+    const config = error?.config;
 
-    if ((status === 401 && hadStoredToken && requestHadBearerToken) ||
-        (status === 403 && hadStoredToken && String(message).toLowerCase().includes('jwt'))) {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
+    // Tránh hiện thông báo nếu:
+    // 1. Đã đang hiện một cái rồi
+    // 2. Lỗi xảy ra khi app đang thử check trạng thái đăng nhập lúc khởi tạo (Auth/me, Profile/me)
+    const isInitialAuthCheck = config?.url?.includes('/Auth/me') || config?.url?.includes('/Profile/me');
+
+    if ((status === 401 || (status === 403 && String(message).toLowerCase().includes('jwt'))) && !isInitialAuthCheck) {
+      // Clear local state
       localStorage.removeItem('user');
-      window.dispatchEvent(new CustomEvent('auth-toast', {
-        detail: {
-          type: 'error',
-          title: 'Phiên đăng nhập đã hết hạn',
-          message: 'Vui lòng đăng nhập lại để tiếp tục.',
-        },
-      }));
+
+      if (!isExpiredToastShowing) {
+        isExpiredToastShowing = true;
+        window.dispatchEvent(new CustomEvent('auth-toast', {
+          detail: {
+            type: 'error',
+            title: 'Phiên đăng nhập đã hết hạn',
+            message: 'Vui lòng đăng nhập lại để tiếp tục.',
+          },
+        }));
+
+        // Reset flag after 3 seconds to allow future valid notifications
+        setTimeout(() => {
+          isExpiredToastShowing = false;
+        }, 3000);
+      }
+
       window.dispatchEvent(new Event('auth-session-expired'));
     }
 

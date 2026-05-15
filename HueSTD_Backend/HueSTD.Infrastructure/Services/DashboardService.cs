@@ -129,6 +129,7 @@ public class DashboardService : IDashboardService
             FullName = p.FullName,
             PublicId = p.PublicId,
             AvatarUrl = p.AvatarUrl,
+            Badge = p.Badge,
             Points = p.Points,
             Rank = index + 1
         });

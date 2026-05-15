@@ -242,7 +242,7 @@ const ChatModule: React.FC = () => {
           conversationName={
             selectedConversation?.type === 'direct'
               ? selectedConversation.otherUserName
-              : selectedConversation?.name || draftDirectChat?.fullName || draftDirectChat?.email || 'Nguoi dung'
+              : selectedConversation?.name || draftDirectChat?.fullName || draftDirectChat?.email || 'Người dùng'
           }
           conversationAvatar={
             selectedConversation?.type === 'direct'
@@ -258,7 +258,7 @@ const ChatModule: React.FC = () => {
             draftDirectChat
               ? {
                   userId: draftDirectChat.id,
-                  userName: draftDirectChat.fullName || draftDirectChat.email || 'Nguoi dung',
+                  userName: draftDirectChat.fullName || draftDirectChat.email || 'Người dùng',
                   userAvatar: draftDirectChat.avatarUrl || '',
                   email: draftDirectChat.email || '',
                 }
@@ -272,14 +272,14 @@ const ChatModule: React.FC = () => {
             <div className="w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <MessageCircle size={40} className="text-teal-600" />
             </div>
-            <h2 className="text-xl font-black text-slate-800 mb-2">Tin nhan</h2>
-            <p className="text-slate-500 mb-4">Chon cuoc tro chuyen hoac bat dau cuoc tro chuyen moi</p>
+            <h2 className="text-xl font-black text-slate-800 mb-2">Tin nhắn</h2>
+            <p className="text-slate-500 mb-4">Chọn cuộc trò chuyện hoặc bắt đầu cuộc trò chuyện mới</p>
             <button
               onClick={() => setShowNewChat(true)}
               className="inline-flex items-center gap-2 px-6 py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl transition-all shadow-lg shadow-teal-100"
             >
               <MessageCircle size={20} />
-              Tin nhan moi
+              Tin nhắn mới
             </button>
           </div>
         </div>

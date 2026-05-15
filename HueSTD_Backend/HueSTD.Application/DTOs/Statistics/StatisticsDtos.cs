@@ -16,6 +16,7 @@ public class UserRankingDto
     public string? FullName { get; set; }
     public string? PublicId { get; set; }
     public string? AvatarUrl { get; set; }
+    public string? Badge { get; set; }
     public int Points { get; set; }
     public int Rank { get; set; }
 }

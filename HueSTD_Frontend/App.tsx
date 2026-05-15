@@ -122,12 +122,11 @@ const mapAuthUserToUser = (authUser: any): User | null => {
     badge: authUser.badge || authUser.Badge || 'Thành viên mới',
     totalDocuments: authUser.totalDocuments || authUser.TotalDocuments || 0,
     totalDownloads: authUser.totalDownloads || authUser.TotalDownloads || 0,
-    averageRating: authUser.averageRating || authUser.AverageRating || 0.0
-  };
+      };
 };
 
 const AppContent: React.FC = () => {
-  const { user: authUser, isAuthenticated, logout } = useAuth();
+  const { user: authUser, isAuthenticated, isHydrating, logout } = useAuth();
   const { theme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
@@ -228,6 +227,10 @@ const AppContent: React.FC = () => {
     }
   }, [user?.role, location.pathname, navigate]);
 
+  if (isHydrating) {
+    return <div className="min-h-screen bg-slate-50 dark:bg-slate-950" />;
+  }
+
   if (user && user.role === 'admin') {
     return (
       <>
@@ -292,6 +295,7 @@ const AppContent: React.FC = () => {
 };
 
 import { Analytics } from '@vercel/analytics/react';
+import BackgroundParticles from './components/BackgroundParticles';
 
 const App: React.FC = () => {
   return (
@@ -299,6 +303,7 @@ const App: React.FC = () => {
       <ThemeProvider>
         <AuthProvider>
           <AuthToastListener>
+            <BackgroundParticles />
             <GlobalNotificationListener />
             <AppContent />
             <Analytics />

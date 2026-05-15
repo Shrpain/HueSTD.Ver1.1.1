@@ -182,15 +182,11 @@ export const chatWithDocument = async (
         const apiInstance = api;
         console.log('[AI] API module imported successfully');
 
-        const token = localStorage.getItem('accessToken');
-
         console.log('[AI] Sending POST to /Ai/chat...');
         const response = await apiInstance.post('/Ai/chat', {
             message,
             context,
             isSystemPrompt
-        }, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         console.log('[AI] Response received:', response.status, response.data);
 
@@ -242,13 +238,7 @@ export interface MyAiUsage {
  */
 export const getMyAiUsage = async (): Promise<MyAiUsage> => {
     const { default: api } = await import('./api');
-    const token = localStorage.getItem('accessToken');
-    if (!token) {
-        throw Object.assign(new Error('not_authenticated'), { status: 401 });
-    }
-    const response = await api.get('/Ai/my-usage', {
-        headers: { Authorization: `Bearer ${token}` }
-    });
+    const response = await api.get('/Ai/my-usage');
     return response.data;
 };
 
@@ -258,12 +248,9 @@ export const getMyAiUsage = async (): Promise<MyAiUsage> => {
 export const generateExamFromAI = async (content: string, questionCount: number): Promise<any> => {
     try {
         const { default: api } = await import('./api');
-        const token = localStorage.getItem('accessToken');
         const response = await api.post('/Ai/generate-exam', {
             content,
             questionCount
-        }, {
-            headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
         return response.data;
     } catch (error: any) {

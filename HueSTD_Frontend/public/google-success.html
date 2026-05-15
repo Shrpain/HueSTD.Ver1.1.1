@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Google Login Success</title>
+  <style>
+    body {font-family: system-ui, sans-serif; display:flex; justify-content:center; align-items:center; height:100vh; margin:0; background:#ffffff; color:#1e293b;}
+    .msg {text-align:center; animation:fadeIn 0.3s ease-out;}
+    .msg h1 {color:#059669; font-size:1.5rem; margin-bottom:.5rem;}
+    .msg p {color:#64748b; font-size:.875rem;}
+    @keyframes fadeIn {from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:translateY(0)}}
+  </style>
+</head>
+<body>
+  <div class="msg">
+    <h1>Đăng nhập thành công!</h1>
+    <p>Đang tự động đóng cửa sổ...</p>
+  </div>
+  <script>
+    // Notify the opener (main window) that the OAuth flow completed successfully.
+    if (window.opener && !window.opener.closed) {
+      try {
+        window.opener.postMessage({ type: 'google-oauth-success' }, '*');
+        // Redirect the main window to the desired page after login
+        window.opener.location.href = '/'; // you can change this path as needed
+      } catch (_) {
+        // ignore – some browsers may block cross‑origin messaging
+      }
+    }
+    // Close the popup immediately after notifying the opener.
+    setTimeout(() => window.close(), 100);
+  </script>
+</body>
+</html>
